@@ -1,6 +1,6 @@
 [submodule "librealsense"]
 	path = librealsense
-	url = https://github.com/greenjava/librealsense
+	url = https://github.com/jcelerier/librealsense
 [submodule "max-sdk"]
 	path = max-sdk
 	url = https://github.com/Cycling74/max-sdk
