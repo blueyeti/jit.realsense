@@ -33,8 +33,7 @@ if(WIN32)
 
 	set_target_properties(MaxAPI PROPERTIES 
 		INTERFACE_COMPILE_DEFINITIONS 
-			_CRT_SECURE_NO_WARNINGS
-			VER_TARGETNAME="jit.realsense")
+			"WIN_VERSION;_CRT_SECURE_NO_WARNINGS;VER_TARGETNAME=\"jit.realsense\"")
 
 elseif(APPLE)
 	set_target_properties(MaxAPI PROPERTIES INTERFACE_LINK_LIBRARIES ${MAX_ROOT}/MaxAPI.framework)
@@ -76,6 +75,7 @@ endif()
 
 add_library(jit.realsense MODULE jit.realsense.cpp max.jit.realsense.cpp)
 target_link_libraries(jit.realsense PRIVATE MaxAPI Jitter realsense)
+set_target_properties(jit.realsense PROPERTIES CXX_STANDARD 14)
 
 if(WIN32)
 	if(WIN64)

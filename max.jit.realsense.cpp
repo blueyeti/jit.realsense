@@ -5,6 +5,7 @@
 
 #include "jit.common.h"
 #include <librealsense/rs.h>
+#include <cstdint>
 
 extern "C"
 {
@@ -62,7 +63,7 @@ int init_realsense(void)
     check_error();
 
     /* Determine depth value corresponding to one meter */
-    const uint16_t one_meter = (uint16_t)(1.0f / rs_get_device_depth_scale(dev, &e));
+    const auto one_meter = (uint16_t)(1.0f / rs_get_device_depth_scale(dev, &e));
     check_error();
 }
 
