@@ -77,6 +77,13 @@ add_library(jit.realsense MODULE jit.realsense.cpp max.jit.realsense.cpp)
 target_link_libraries(jit.realsense PRIVATE MaxAPI Jitter realsense)
 set_target_properties(jit.realsense PROPERTIES CXX_STANDARD 14)
 
+if(CMAKE_BUILD_TYPE STREQUAL Release)
+	if(APPLE)
+		target_compile_options(jit.realsense PUBLIC "-Ofast" "-march=haswell" "-flto")
+	else()
+		target_compile_options(jit.realsense "/O4")
+	endif()
+endif()
 if(WIN32)
 	if(WIN64)
 		set_target_properties(jit.realsense PROPERTIES 
