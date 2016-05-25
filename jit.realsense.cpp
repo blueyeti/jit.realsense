@@ -40,7 +40,7 @@ t_jit_err jit_realsense_init(void)
     s_jit_realsense_class = jit_class_new("jit_realsense", (method)jit_realsense_new, (method)jit_realsense_free, sizeof(t_jit_realsense), 0);
 
     // add matrix operator (mop)
-    mop = (t_jit_object *)jit_object_new(_jit_sym_jit_mop, 0, 2); // args are  num inputs and num outputs
+    mop = (t_jit_object *)jit_object_new(_jit_sym_jit_mop, 0, 3); // args are  num inputs and num outputs
     jit_class_addadornment(s_jit_realsense_class, mop);
 
     // add method(s)
@@ -78,6 +78,7 @@ t_jit_realsense *jit_realsense_new(void)
                 {
                     x->dev->enable_stream(rs::stream::color, rs::preset::best_quality);
                     x->dev->enable_stream(rs::stream::depth, rs::preset::best_quality);
+                    x->dev->enable_stream(rs::stream::infrared, rs::preset::best_quality);
                     x->dev->start();
                 }
             }
@@ -135,8 +136,8 @@ char* make_n_plane_matrix(
 
     expected.planecount = n_plane;
     expected.dimcount = 2;
-    expected.dim[0] = stream.height;
-    expected.dim[1] = stream.width;
+    expected.dim[0] = stream.width;
+    expected.dim[1] = stream.height;
     expected.type = type;
 
     // Compare this matrix with the one in out_minfo
@@ -154,9 +155,10 @@ char* make_n_plane_matrix(
     return out_bp;
 }
 
-
-
-void compute_depth_output(t_jit_realsense *x, void *matrix)
+// This is parametrized on a type that will give all the relevant
+// information needed to convert from the RS's data to Max's matrix format
+template<typename T>
+void compute_output(t_jit_realsense *x, void *matrix)
 {
     long lock = (long) jit_object_method(matrix, _jit_sym_lock, 1);
 
@@ -165,42 +167,47 @@ void compute_depth_output(t_jit_realsense *x, void *matrix)
 
     // Get the realsense informations and compare them
     // with the current matrix.
-    const rs::intrinsics depth_intrin = x->dev->get_stream_intrinsics(rs::stream::depth);
-    char* out_bp = make_n_plane_matrix(out_minfo, matrix, depth_intrin, 1, _jit_sym_long);
+    const rs::intrinsics depth_intrin = x->dev->get_stream_intrinsics(T::stream_type);
+    char* out_bp = make_n_plane_matrix(out_minfo, matrix, depth_intrin, T::num_planes, T::symbol());
 
     // Do the actual copy
-    const uint16_t * depth_image = (const uint16_t *)x->dev->get_frame_data(rs::stream::depth);
-    auto matrix_out = (long*) out_bp;
+    auto depth_image = (const typename T::realsense_type *) x->dev->get_frame_data(T::stream_type);
+    auto matrix_out = (typename T::max_type*) out_bp;
 
     // Copy the data as long in the Max Matrix
-    int size = depth_intrin.height * depth_intrin.width;
+    int size = depth_intrin.height * depth_intrin.width * T::num_planes;
     std::copy(depth_image, depth_image + size, matrix_out);
 
     jit_object_method(matrix, _jit_sym_lock, lock);
 }
 
-void compute_color_output(t_jit_realsense *x, void *matrix)
+struct DepthInfo
 {
-    long lock = (long) jit_object_method(matrix, _jit_sym_lock, 1);
+        using max_type = long;
+        using realsense_type = uint16_t;
+        static auto symbol() { return _jit_sym_long; }
+        static const constexpr int num_planes = 1;
+        static const constexpr rs::stream stream_type = rs::stream::depth;
+};
 
-    t_jit_matrix_info out_minfo;
-    jit_object_method(matrix, _jit_sym_getinfo, &out_minfo);
+struct ColorInfo
+{
+        using max_type = char;
+        using realsense_type = uint8_t;
+        static auto symbol() { return _jit_sym_char; }
+        static const constexpr int num_planes = 3;
+        static const constexpr rs::stream stream_type = rs::stream::color;
+};
 
-    // Get the realsense informations and compare them
-    // with the current matrix.
-    const rs::intrinsics depth_intrin = x->dev->get_stream_intrinsics(rs::stream::color);
-    char* out_bp = make_n_plane_matrix(out_minfo, matrix, depth_intrin, 3, _jit_sym_char);
+struct IR1Info
+{
+        using max_type = char;
+        using realsense_type = uint8_t;
+        static auto symbol() { return _jit_sym_char; }
+        static const constexpr int num_planes = 1;
+        static const constexpr rs::stream stream_type = rs::stream::infrared;
+};
 
-    // Do the actual copy
-    auto depth_image = (const uint8_t *) x->dev->get_frame_data(rs::stream::color);
-    auto matrix_out = (char*) out_bp;
-
-    // Copy the data as long in the Max Matrix
-    int size = depth_intrin.height * depth_intrin.width * 3;
-    std::copy(depth_image, depth_image + size, matrix_out);
-
-    jit_object_method(matrix, _jit_sym_lock, lock);
-}
 
 t_jit_err jit_realsense_matrix_calc(t_jit_realsense *x, void *inputs, void *outputs)
 {
@@ -215,23 +222,33 @@ t_jit_err jit_realsense_matrix_calc(t_jit_realsense *x, void *inputs, void *outp
     x->dev->wait_for_frames();
 
     { // Depth -> first outlet
-        auto depth_matrix = jit_object_method(outputs, _jit_sym_getindex, 0);
-        if (!depth_matrix)
+        auto matrix = jit_object_method(outputs, _jit_sym_getindex, 0);
+        if (!matrix)
         {
             error("No depth");
             return JIT_ERR_INVALID_PTR;
         }
-        compute_depth_output(x, depth_matrix);
+        compute_output<DepthInfo>(x, matrix);
     }
 
     { // Color -> second outlet
-        auto color_matrix = jit_object_method(outputs, _jit_sym_getindex, 1);
-        if (!color_matrix)
+        auto matrix = jit_object_method(outputs, _jit_sym_getindex, 1);
+        if (!matrix)
         {
             error("No color");
             return JIT_ERR_INVALID_PTR;
         }
-        compute_color_output(x, color_matrix);
+        compute_output<ColorInfo>(x, matrix);
+    }
+
+    { // IR1 -> third outlet
+        auto matrix = jit_object_method(outputs, _jit_sym_getindex, 2);
+        if (!matrix)
+        {
+            error("No color");
+            return JIT_ERR_INVALID_PTR;
+        }
+        compute_output<IR1Info>(x, matrix);
     }
 
     return JIT_ERR_NONE;
