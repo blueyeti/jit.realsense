@@ -23,6 +23,30 @@ static void	*max_jit_realsense_class = NULL;
 
 /************************************************************************************/
 
+void max_jit_realsense_outputmatrix(t_max_jit_realsense *x)
+{
+    long outputmode = max_jit_mop_getoutputmode(x);
+    void *mop = max_jit_obex_adornment_get(x,_jit_sym_jit_mop);
+    t_jit_err err;
+
+    if (outputmode&&mop) { //always output unless output mode is none
+        if (outputmode==1) {
+            if (err=(t_jit_err)jit_object_method(
+                        max_jit_obex_jitob_get(x),
+                        _jit_sym_matrix_calc,
+                        jit_object_method(mop,_jit_sym_getinputlist),
+                        jit_object_method(mop,_jit_sym_getoutputlist)))
+            {
+                jit_error_code(x,err);
+            } else {
+                max_jit_mop_outputmatrix(x);
+            }
+        } else {
+            max_jit_mop_outputmatrix(x);
+        }
+    }
+}
+
 void ext_main(void *r)
 {
     t_class *max_class, *jit_class;
@@ -33,11 +57,11 @@ void ext_main(void *r)
     max_jit_class_obex_setup(max_class, calcoffset(t_max_jit_realsense, obex));
 
     jit_class = (maxclass*)jit_class_findbyname(gensym("jit_realsense"));
-    max_jit_class_mop_wrap(max_class, jit_class, 0);			// attrs & methods for name, type, dim, planecount, bang, outputmatrix, etc
-    max_jit_class_wrap_standard(max_class, jit_class, 0);		// attrs & methods for getattributes, dumpout, maxjitclassaddmethods, etc
+    max_jit_class_mop_wrap(max_class, jit_class, MAX_JIT_MOP_FLAGS_OWN_OUTPUTMATRIX|MAX_JIT_MOP_FLAGS_OWN_JIT_MATRIX);
+    max_jit_class_wrap_standard(max_class, jit_class, 0);
 
-    class_addmethod(max_class, (method)max_jit_mop_assist, "assist", A_CANT, 0);	// standard matrix-operator (mop) assist fn
-
+    max_jit_class_addmethod_usurp_low(max_class, (method) max_jit_realsense_outputmatrix, "outputmatrix");
+    class_addmethod(max_class, (method)max_jit_mop_assist, "assist", A_CANT, 0);
     class_register(CLASS_BOX, max_class);
     max_jit_realsense_class = max_class;
 }
