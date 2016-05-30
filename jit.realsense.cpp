@@ -1,22 +1,135 @@
 #include <librealsense/rs.hpp>
 #include <vector>
-namespace rs
-{
-using exception = error;
-}
+#include <array>
+#include <cstdint>
 #include "jit.common.h"
+
+// To be able to iterate over rs::stream
+
+static const constexpr int jit_realsense_num_outlets = 6;
+
+struct jit_rs_streaminfo
+{
+        long stream = (long)rs::stream::depth;
+        long format = (long)rs::format::z16;
+        long rate = 60;
+        long dimensions_size = 2;
+        std::array<long, 2> dimensions = {640, 480};
+
+        friend bool operator!=(const jit_rs_streaminfo& lhs, const jit_rs_streaminfo& rhs)
+        {
+            return lhs.stream != rhs.stream
+                 || lhs.format != rhs.format
+                 || lhs.rate != rhs.rate
+                 || lhs.dimensions != rhs.dimensions;
+        }
+        friend bool operator==(const jit_rs_streaminfo& lhs, const jit_rs_streaminfo& rhs)
+        {
+            return !(lhs != rhs);
+        }
+};
+
 // Our Jitter object instance data
 typedef struct _jit_realsense {
         t_object	ob{};
         rs::device* dev{};
+
+        long device = 0;
+        long out_count = 1;
+
+        std::array<jit_rs_streaminfo, jit_realsense_num_outlets> outputs;
+
+        long device_cache = 0;
+        long out_count_cache = 1;
+        std::array<jit_rs_streaminfo, jit_realsense_num_outlets> outputs_cache;
+
+        void construct()
+        {
+            device = 0;
+            out_count = 1;
+            outputs = std::array<jit_rs_streaminfo, jit_realsense_num_outlets>{};
+
+            device_cache = 0;
+            out_count = 1;
+            outputs_cache = outputs;
+        }
+
+        void rebuild()
+        try
+        {
+            auto& ctx = _jit_realsense::context();
+            // First cleanup if device is changing
+            cleanup();
+            dev = nullptr;
+
+            // Try to get the new device
+            auto n_dev = ctx.get_device_count();
+            post("There are %d connected RealSense devices.\n", n_dev);
+
+            if(n_dev <= device)
+            {
+                post("Device %d is not connected.", device);
+                return;
+            }
+
+            dev = ctx.get_device(device);
+
+            post("\nUsing device %d, an %s\n", device, dev->get_name());
+            post("    Serial number: %s\n", dev->get_serial());
+            post("    Firmware version: %s\n", dev->get_firmware_version());
+
+            rebuild_streams();
+
+            device_cache = device;
+            out_count_cache = out_count;
+        }
+        catch(const std::exception & e)
+        {
+            error("%s\n", e.what());
+            if(dev)
+                dev = nullptr;
+        }
+
+        void rebuild_streams()
+        try
+        {
+            cleanup();
+
+            for(int i = 0; i < out_count; i++)
+            {
+                jit_rs_streaminfo& out = outputs[i];
+                post("FORMAT: %d %d\n", out.stream, out.format);
+                dev->enable_stream((rs::stream) out.stream, out.dimensions[0], out.dimensions[1], (rs::format) out.format, out.rate);
+            }
+
+            outputs_cache = outputs;
+            if(out_count > 0)
+                dev->start();
+        }
+        catch(const std::exception & e)
+        {
+            error("%s\n", e.what());
+        }
 
         static rs::context& context()
         {
             static rs::context ctx;
             return ctx;
         }
-} t_jit_realsense;
 
+        void cleanup()
+        {
+            if(!dev)
+                return;
+
+            if(dev->is_streaming())
+                dev->stop();
+
+            for(int i = 0; i < 4; i++)
+                dev->disable_stream((rs::stream)i);
+
+        }
+} t_jit_realsense;
 
 // prototypes
 BEGIN_USING_C_LINKAGE
@@ -24,88 +137,193 @@ t_jit_err		jit_realsense_init				(void);
 t_jit_realsense	*jit_realsense_new				(void);
 void			jit_realsense_free				(t_jit_realsense *x);
 t_jit_err		jit_realsense_matrix_calc		(t_jit_realsense *x, void *inputs, void *outputs);
-void			jit_realsense_calculate_ndim	(t_jit_realsense *x, long dim, long *dimsize, long planecount, t_jit_matrix_info *in_minfo, char *bip, t_jit_matrix_info *out_minfo, char *bop);
 END_USING_C_LINKAGE
 
 
 // globals
-static void *s_jit_realsense_class = NULL;
+static t_class* s_jit_realsense_class = NULL;
+template <typename T, typename U>
+intptr_t get_offset(T U::*member)
+{
+    return reinterpret_cast<intptr_t>(&(((U*) nullptr)->*member));
+}
+template <typename T, typename U>
+intptr_t get_offset(T U::*member, int N)
+{
+    return reinterpret_cast<intptr_t>(&((((U*) nullptr)->*member)[N]));
+}
+
+
+template <typename T>
+static void add_attribute(std::string name, T t_jit_realsense::*member)
+{
+    const auto flags = JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_USURP_LOW;
+    jit_class_addattr(s_jit_realsense_class,
+                      (t_jit_object*) jit_object_new(
+                          _jit_sym_jit_attr_offset,
+                          name.c_str(),
+                          _jit_sym_long,
+                          flags,
+                          (method)nullptr,
+                          (method)nullptr,
+                          get_offset(member)));
+}
+
+template<typename T>
+static void add_output_attribute(std::string name, int num, T jit_rs_streaminfo::*member)
+{
+    const auto flags = JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_USURP_LOW;
+    const auto outputs_offset = get_offset(&t_jit_realsense::outputs, num);
+
+    jit_class_addattr(s_jit_realsense_class,
+                      (t_jit_object*) jit_object_new(
+                          _jit_sym_jit_attr_offset,
+                          name.c_str(),
+                          _jit_sym_long,
+                          flags,
+                          (method)nullptr,
+                          (method)nullptr,
+                          outputs_offset + get_offset(member)));
+}
+template<typename T>
+static void add_array_output_attribute(std::string name, int num, T jit_rs_streaminfo::*member)
+{
+    const auto flags = JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_USURP_LOW;
+    const auto outputs_offset = get_offset(&t_jit_realsense::outputs, num);
+
+    jit_class_addattr(s_jit_realsense_class,
+                      (t_jit_object*) jit_object_new(
+                          _jit_sym_jit_attr_offset_array,
+                          name.c_str(),
+                          _jit_sym_long,
+                          2,
+                          flags,
+                          (method)nullptr,
+                          (method)nullptr,
+                          outputs_offset + get_offset(member) - sizeof(long),
+                          outputs_offset + get_offset(member)));
+}
 
 /************************************************************************************/
+
+void class_attr_enumindex_rec(t_atom*)
+{
+
+}
+template<typename Arg, typename... Args>
+void class_attr_enumindex_rec(t_atom* aaa, Arg&& arg, Args&&... args)
+{
+    atom_setsym(aaa,gensym_tr(arg));
+    class_attr_enumindex_rec(aaa + 1, std::forward<Args>(args)...);
+}
+
+template<typename... Args>
+void class_attr_enumindex(t_class* theclass, std::string attrname, Args&&... args)
+{
+    int num = sizeof...(Args);
+    t_atom aaa[num];
+    CLASS_ATTR_STYLE(theclass, attrname.c_str(), 0, "enumindex");
+    class_attr_enumindex_rec(aaa, std::forward<Args>(args)...);
+    CLASS_ATTR_ATTR_ATOMS(theclass, attrname.c_str(), "enumvals", USESYM(atom), 0, num, aaa);
+}
 
 t_jit_err jit_realsense_init(void)
 {
     t_jit_object	*mop;
 
-    s_jit_realsense_class = jit_class_new("jit_realsense", (method)jit_realsense_new, (method)jit_realsense_free, sizeof(t_jit_realsense), 0);
+    s_jit_realsense_class = (t_class*)jit_class_new("jit_realsense", (method)jit_realsense_new, (method)jit_realsense_free, sizeof(t_jit_realsense), 0);
 
     // add matrix operator (mop)
-    mop = (t_jit_object *)jit_object_new(_jit_sym_jit_mop, 0, 3); // args are  num inputs and num outputs
+    mop = (t_jit_object *)jit_object_new(_jit_sym_jit_mop, 0, jit_realsense_num_outlets); // args are  num inputs and num outputs
     jit_class_addadornment(s_jit_realsense_class, mop);
 
     // add method(s)
     jit_class_addmethod(s_jit_realsense_class, (method)jit_realsense_matrix_calc, "matrix_calc", A_CANT, 0);
+
+    // Add attributes :
+
+    add_attribute("rs_device", &t_jit_realsense::device);
+    add_attribute("rs_out_count", &t_jit_realsense::out_count);
+
+    add_output_attribute("rs_stream", 0, &jit_rs_streaminfo::stream);
+    CLASS_ATTR_LABEL(s_jit_realsense_class, "rs_stream", 0, "Out 1 Stream");
+    class_attr_enumindex(s_jit_realsense_class, "rs_stream", "Depth", "Color", "Infrared", "Infrared 2");
+
+    add_output_attribute("rs_format", 0, &jit_rs_streaminfo::format);
+    CLASS_ATTR_LABEL(s_jit_realsense_class, "rs_format", 0, "Out 1 Format");
+    class_attr_enumindex(s_jit_realsense_class, "rs_format", "any", "z16", "disparity16", "xyz32f", "yuyv", "rgb8", "bgr8", "rgba8", "bgra8", "y8", "y16", "raw10");
+
+    add_output_attribute("rs_rate", 0, &jit_rs_streaminfo::rate);
+    CLASS_ATTR_LABEL(s_jit_realsense_class, "rs_rate", 0, "Out 1 Rate");
+    CLASS_ATTR_FILTER_CLIP(s_jit_realsense_class, "rs_rate", 0, 120);
+
+    add_array_output_attribute("rs_dim", 0, &jit_rs_streaminfo::dimensions);
+    CLASS_ATTR_LABEL(s_jit_realsense_class, "rs_dim", 0, "Out 1 Dims");
+
+    for(int i = 1; i < jit_realsense_num_outlets; i++)
+    {
+        std::string num_str = std::to_string(i + 1);
+        std::string out_str = "out" + num_str;
+        std::string out_maj_str = "Out" + num_str + " ";
+
+        {
+            auto attr = out_str + "_rs_stream";
+            auto pretty = out_maj_str + "Stream";
+            add_output_attribute(attr, i, &jit_rs_streaminfo::stream);
+            CLASS_ATTR_LABEL(s_jit_realsense_class, attr.c_str(), 0, pretty.c_str());
+            class_attr_enumindex(s_jit_realsense_class, attr, "Depth", "Color", "Infrared", "Infrared 2");
+        }
+
+        {
+            auto attr = out_str + "_rs_format";
+            auto pretty = out_maj_str + "Format";
+            add_output_attribute(attr, i, &jit_rs_streaminfo::format);
+            CLASS_ATTR_LABEL(s_jit_realsense_class, attr.c_str(), 0, pretty.c_str());
+            class_attr_enumindex(s_jit_realsense_class, attr, "any", "z16", "disparity16", "xyz32f", "yuyv", "rgb8", "bgr8", "rgba8", "bgra8", "y8", "y16", "raw10");
+        }
+
+        {
+            auto attr = out_str + "_rs_rate";
+            auto pretty = out_maj_str + "Rate";
+            add_output_attribute(attr, i, &jit_rs_streaminfo::rate);
+            CLASS_ATTR_LABEL(s_jit_realsense_class, attr.c_str(), 0, pretty.c_str());
+            CLASS_ATTR_FILTER_CLIP(s_jit_realsense_class, "rs_rate", 0, 120);
+        }
+
+        {
+            auto attr = out_str + "_rs_dim";
+            auto pretty = out_maj_str + "Dims";
+            add_array_output_attribute(attr, i, &jit_rs_streaminfo::dimensions);
+            CLASS_ATTR_LABEL(s_jit_realsense_class, attr.c_str(), 0, pretty.c_str());
+        }
+    }
+
 
     // finalize class
     jit_class_register(s_jit_realsense_class);
     return JIT_ERR_NONE;
 }
 
-
-/************************************************************************************/
-// Object Life Cycle
-
 t_jit_realsense *jit_realsense_new(void)
 {
-    auto& ctx = _jit_realsense::context();
-    auto n_dev = ctx.get_device_count();
     t_jit_realsense	*x = NULL;
-    post("There are %d connected RealSense devices.\n", n_dev);
 
     x = (t_jit_realsense *)jit_object_alloc(s_jit_realsense_class);
-    if (x) {
-        if(n_dev > 0)
-        {
-            try {
-                // TODO add used device as a parameter
-                x->dev = ctx.get_device(0);
-
-                post("\nUsing device 0, an %s\n", x->dev->get_name());
-                post("    Serial number: %s\n", x->dev->get_serial());
-                post("    Firmware version: %s\n", x->dev->get_firmware_version());
-
-                if(!x->dev->is_streaming())
-                {
-                    x->dev->enable_stream(rs::stream::color, rs::preset::best_quality);
-                    x->dev->enable_stream(rs::stream::depth, rs::preset::best_quality);
-                    x->dev->enable_stream(rs::stream::infrared, rs::preset::best_quality);
-                    x->dev->start();
-                }
-            }
-            catch(const rs::exception & e)
-            {
-                post("%s\n", e.what());
-                if(x->dev)
-                    x->dev = nullptr;
-            }
-        }
+    if (x)
+    {
+        x->construct();
+        x->rebuild();
     }
     return x;
 }
-
 
 void jit_realsense_free(t_jit_realsense *x)
 {
     if(x->dev && x->dev->is_streaming())
     {
         x->dev->stop();
-        x->dev->disable_stream(rs::stream::depth);
     }
 }
-
-
-/************************************************************************************/
-// Methods bound to input/inlets
 
 bool compare_matrix_info(t_jit_matrix_info& current, t_jit_matrix_info expected)
 {
@@ -155,11 +373,127 @@ char* make_n_plane_matrix(
     return out_bp;
 }
 
-// This is parametrized on a type that will give all the relevant
-// information needed to convert from the RS's data to Max's matrix format
-template<typename T>
-void compute_output(t_jit_realsense *x, void *matrix)
+constexpr int num_planes_from_format(long format)
 {
+    switch((rs::format) format)
+    {
+        case rs::format::any:
+            throw std::logic_error{"any unhandled"};
+        case rs::format::z16:
+        case rs::format::disparity16:
+        case rs::format::y8:
+        case rs::format::y16:
+        case rs::format::yuyv:
+            return 1;
+        case rs::format::rgb8:
+        case rs::format::bgr8:
+            return 3;
+        case rs::format::rgba8:
+        case rs::format::bgra8:
+        case rs::format::xyz32f:
+        case rs::format::raw10:
+            return 4;
+    }
+}
+
+constexpr t_symbol * symbol_from_format(long format)
+{
+    switch((rs::format) format)
+    {
+        case rs::format::z16:
+        case rs::format::y16:
+        case rs::format::disparity16:
+            return _jit_sym_long;
+        case rs::format::y8:
+        case rs::format::rgb8:
+        case rs::format::bgr8:
+        case rs::format::rgba8:
+        case rs::format::bgra8:
+        case rs::format::yuyv:
+            return _jit_sym_char;
+        case rs::format::xyz32f:
+            return _jit_sym_float32;
+        // Weird cases :
+        case rs::format::raw10:
+        case rs::format::any:
+            throw std::logic_error{"raw10, any unhandled"};
+
+    }
+}
+
+template<rs::format>
+struct copier;
+
+// 16 bit case
+template<>
+struct copier<rs::format::z16>
+{
+        void operator()(int size, const void* rs_matrix, char* max_matrix)
+        {
+            auto image = (const uint16_t *) rs_matrix;
+            auto matrix_out = (long*) max_matrix;
+
+            std::copy(image, image + size, matrix_out);
+        }
+};
+
+// 8 bit case
+template<>
+struct copier<rs::format::y8>
+{
+        void operator()(int size, const void* rs_matrix, char* max_matrix)
+        {
+            auto image = (const uint8_t *) rs_matrix;
+            auto matrix_out = (char*) max_matrix;
+
+            std::copy(image, image + size, matrix_out);
+        }
+};
+
+// Float case
+template<>
+struct copier<rs::format::xyz32f>
+{
+        void operator()(int size, const void* rs_matrix, char* max_matrix)
+        {
+            auto image = (const float *) rs_matrix;
+            auto matrix_out = (float*) max_matrix;
+
+            std::copy(image, image + size, matrix_out);
+        }
+};
+
+void do_copy(rs::format fmt, int size, const void* rs_matrix, char* max_matrix)
+{
+    switch(fmt)
+    {
+        case rs::format::z16:
+        case rs::format::y16:
+        case rs::format::disparity16:
+             return copier<rs::format::z16>{}(size, rs_matrix, max_matrix);
+        case rs::format::y8:
+        case rs::format::rgb8:
+        case rs::format::bgr8:
+        case rs::format::rgba8:
+        case rs::format::bgra8:
+        case rs::format::yuyv:
+            return copier<rs::format::y8>{}(size, rs_matrix, max_matrix);
+        case rs::format::xyz32f:
+            return copier<rs::format::xyz32f>{}(size, rs_matrix, max_matrix);
+        // Weird cases :
+        case rs::format::raw10:
+        case rs::format::any:
+            throw std::logic_error{"raw10, any unhandled"};
+
+    }
+}
+
+void compute_output(t_jit_realsense *x, void *matrix, const jit_rs_streaminfo& info)
+{
+    const auto num_planes = num_planes_from_format(info.format);
+    const auto sym = symbol_from_format(info.format);
+    const rs::stream stream = (rs::stream)info.stream;
+
     long lock = (long) jit_object_method(matrix, _jit_sym_lock, 1);
 
     t_jit_matrix_info out_minfo;
@@ -167,49 +501,21 @@ void compute_output(t_jit_realsense *x, void *matrix)
 
     // Get the realsense informations and compare them
     // with the current matrix.
-    const rs::intrinsics depth_intrin = x->dev->get_stream_intrinsics(T::stream_type);
-    char* out_bp = make_n_plane_matrix(out_minfo, matrix, depth_intrin, T::num_planes, T::symbol());
+    const rs::intrinsics depth_intrin = x->dev->get_stream_intrinsics(stream);
+    char* out_bp = make_n_plane_matrix(out_minfo, matrix, depth_intrin,
+                                       num_planes,
+                                       sym);
 
-    // Do the actual copy
-    auto depth_image = (const typename T::realsense_type *) x->dev->get_frame_data(T::stream_type);
-    auto matrix_out = (typename T::max_type*) out_bp;
-
-    // Copy the data as long in the Max Matrix
-    int size = depth_intrin.height * depth_intrin.width * T::num_planes;
-    std::copy(depth_image, depth_image + size, matrix_out);
+    // Copy the data in the Max Matrix
+    post("%d %d %d %d %d\n", info.stream, info.format, info.rate, info.dimensions[0], info.dimensions[1]);
+    int size = depth_intrin.height * depth_intrin.width * num_planes;
+    do_copy((rs::format) info.format, size, x->dev->get_frame_data(stream), out_bp);
 
     jit_object_method(matrix, _jit_sym_lock, lock);
 }
 
-struct DepthInfo
-{
-        using max_type = long;
-        using realsense_type = uint16_t;
-        static auto symbol() { return _jit_sym_long; }
-        static const constexpr int num_planes = 1;
-        static const constexpr rs::stream stream_type = rs::stream::depth;
-};
-
-struct ColorInfo
-{
-        using max_type = char;
-        using realsense_type = uint8_t;
-        static auto symbol() { return _jit_sym_char; }
-        static const constexpr int num_planes = 3;
-        static const constexpr rs::stream stream_type = rs::stream::color;
-};
-
-struct IR1Info
-{
-        using max_type = char;
-        using realsense_type = uint8_t;
-        static auto symbol() { return _jit_sym_char; }
-        static const constexpr int num_planes = 1;
-        static const constexpr rs::stream stream_type = rs::stream::infrared;
-};
-
-
 t_jit_err jit_realsense_matrix_calc(t_jit_realsense *x, void *inputs, void *outputs)
+try
 {
     // Get and check the data.
     if(!x || !x->dev)
@@ -218,38 +524,39 @@ t_jit_err jit_realsense_matrix_calc(t_jit_realsense *x, void *inputs, void *outp
         return JIT_ERR_INVALID_PTR;
     }
 
+    if(x->device != x->device_cache)
+    {
+        x->rebuild();
+    }
+    else if(x->out_count != x->out_count_cache)
+    {
+        x->rebuild();
+    }
+    else if(x->outputs != x->outputs_cache)
+    {
+        x->rebuild_streams();
+    }
+
+    if(x->out_count == 0)
+        return JIT_ERR_NONE;
+
     // Fetch new frame from the realsense
     x->dev->wait_for_frames();
 
-    { // Depth -> first outlet
-        auto matrix = jit_object_method(outputs, _jit_sym_getindex, 0);
-        if (!matrix)
+    post("OUT COUNT %d\n", x->out_count);
+    for(int i = 0; i < x->out_count; i++)
+    {
+        if (auto matrix = jit_object_method(outputs, _jit_sym_getindex, i))
         {
-            error("No depth");
-            return JIT_ERR_INVALID_PTR;
+            post("Matrix %d\n", i);
+            compute_output(x, matrix, x->outputs[i]);
         }
-        compute_output<DepthInfo>(x, matrix);
-    }
-
-    { // Color -> second outlet
-        auto matrix = jit_object_method(outputs, _jit_sym_getindex, 1);
-        if (!matrix)
-        {
-            error("No color");
-            return JIT_ERR_INVALID_PTR;
-        }
-        compute_output<ColorInfo>(x, matrix);
-    }
-
-    { // IR1 -> third outlet
-        auto matrix = jit_object_method(outputs, _jit_sym_getindex, 2);
-        if (!matrix)
-        {
-            error("No color");
-            return JIT_ERR_INVALID_PTR;
-        }
-        compute_output<IR1Info>(x, matrix);
     }
 
     return JIT_ERR_NONE;
+}
+catch(const std::exception & e)
+{
+    error("%s\n", e.what());
+    return JIT_ERR_GENERIC;
 }
