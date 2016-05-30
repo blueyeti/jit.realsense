@@ -45,7 +45,7 @@ void max_jit_realsense_outputmatrix(t_max_jit_realsense *x)
     }
 }
 
-void ext_main(void *r)
+void ext_main(void *)
 {
     t_class *max_class, *jit_class;
 
@@ -68,7 +68,7 @@ void ext_main(void *r)
 /************************************************************************************/
 // Object Life Cycle
 
-void *max_jit_realsense_new(t_symbol *s, long argc, t_atom *argv)
+void *max_jit_realsense_new(t_symbol *, long argc, t_atom *argv)
 {
     t_max_jit_realsense	*x;
     void			*o;
@@ -78,7 +78,7 @@ void *max_jit_realsense_new(t_symbol *s, long argc, t_atom *argv)
         o = jit_object_new(gensym("jit_realsense"));
         if (o) {
             max_jit_mop_setup_simple(x, o, argc, argv);
-            max_jit_attr_args(x, argc, argv);
+            max_jit_attr_args(x, (short)argc, argv);
         }
         else {
             jit_object_error((t_object *)x, (char*)"jit.realsense: could not allocate object");
