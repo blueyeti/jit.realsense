@@ -8,7 +8,7 @@ set(BUILD_EXAMPLES OFF)
 if(APPLE)
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -pipe -Ofast -march=corei7-avx")
 else()
-	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O4")
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O4 /MT")
 endif()
 
 if(CMAKE_GENERATOR MATCHES ".*Win64.*")
@@ -94,6 +94,7 @@ if(APPLE)
 endif()
 
 if(WIN32)
+	target_compile_definitions(jit.realsense PRIVATE MAXAPI_USE_MSCRT)
 	if(WIN64)
 		set_target_properties(jit.realsense PROPERTIES 
 			PREFIX "" 
