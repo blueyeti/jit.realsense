@@ -2,10 +2,17 @@ set(CMAKE_OSX_ARCHITECTURES "i386;x86_64")
 
 cmake_minimum_required(VERSION 3.5)
 project(jit.realsense)
-
+set(LibUSB_FIND_STATIC ON)
 set(BUILD_EXAMPLES OFF)
-add_subdirectory(librealsense)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+	if(APPLE)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe -Ofast -march=corei7-avx")
+	endif()
+endif()
+
+
+add_subdirectory(librealsense)
 set(CMAKE_POSITION_INDEPENDENT_CODE True)
 
 set(C74SUPPORT ${CMAKE_CURRENT_SOURCE_DIR}/max-sdk/source/c74support)
@@ -61,6 +68,12 @@ target_link_libraries(jit.realsense PRIVATE MaxAPI Jitter realsense)
 set_target_properties(jit.realsense PROPERTIES CXX_STANDARD 14)
 
 if(APPLE)
+
+	find_library(coreFoundation CoreFoundation)
+	find_library(coreServices CoreServices)
+	find_library(foundation Foundation)
+	find_library(iokit IOKit)
+	target_link_libraries(jit.realsense PUBLIC ${coreFoundation} ${iokit} objc)
 	target_compile_options(jit.realsense PUBLIC
 		-pipe
 		-Weverything
@@ -78,13 +91,7 @@ if(APPLE)
 		-Wno-gnu-zero-variadic-macro-arguments
 		-Wno-float-equal)
 endif()
-if(CMAKE_BUILD_TYPE STREQUAL Release)
-	if(APPLE)
-		target_compile_options(jit.realsense PUBLIC "-Ofast" "-march=haswell" "-flto")
-	else()
-		target_compile_options(jit.realsense "/O4")
-	endif()
-endif()
+
 if(WIN32)
 	if(WIN64)
 		set_target_properties(jit.realsense PROPERTIES 
@@ -103,4 +110,5 @@ else()
 		BUNDLE_EXTENSION "mxo")
 
 	target_include_directories(jit.realsense PRIVATE ${FILE_H_DIR})
+	file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/jit.realsense.mxo/Contents/PkgInfo "iLaX????")
 endif()

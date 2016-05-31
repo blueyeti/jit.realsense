@@ -143,9 +143,9 @@ typedef struct _jit_realsense {
             {
                 jit_rs_streaminfo& out = outputs[(std::size_t)i];
                 auto streams = native_streams((rs::stream)out.stream);
-                if(streams.first == streams.second) // Native stream
+                if(streams.first == streams.second && streams.first == (rs::stream) out.stream) // Native stream
                 {
-                    auto format = best_format((rs::stream)out.stream);
+                    auto format = best_format((rs::stream)streams.first);
                     dev->enable_stream((rs::stream) out.stream, (int)out.dimensions[0], (int)out.dimensions[1], format, (int)out.rate);
                 }
             }
@@ -156,13 +156,11 @@ typedef struct _jit_realsense {
             {
                 jit_rs_streaminfo& out = outputs[(std::size_t)i];
                 auto streams = native_streams((rs::stream)out.stream);
-                if(streams.first != streams.second) // Aligned stream
+                if(streams.first != streams.second ||  streams.first != (rs::stream) out.stream) // Aligned stream
                 {
-                    bool s1 = dev->is_stream_enabled(streams.first);
-                    bool s2 = dev->is_stream_enabled(streams.second);
-                    if(!s1)
+                    if(!dev->is_stream_enabled(streams.first))
                         dev->enable_stream(streams.first, rs::preset::best_quality);
-                    if(!s2)
+                    if(!dev->is_stream_enabled(streams.second))
                         dev->enable_stream(streams.second, rs::preset::best_quality);
                 }
             }
@@ -572,10 +570,16 @@ struct copier<rs::format::xyz32f>
 {
         void operator()(int size, const void* rs_matrix, char* max_matrix)
         {
-            auto image = (const float *) rs_matrix;
+            auto image = (const rs::float3 *) rs_matrix;
             auto matrix_out = (float*) max_matrix;
 
-            std::copy(image, image + size, matrix_out);
+            int j = 0;
+            for(int i = 0; i < size / 3; i++)
+            {
+                matrix_out[j++] = image[i].x;
+                matrix_out[j++] = image[i].y;
+                matrix_out[j++] = image[i].z;
+            }
         }
 };
 /*
