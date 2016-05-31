@@ -8,7 +8,7 @@
 
 static const constexpr int jit_realsense_num_outlets = 6;
 
-constexpr std::pair<rs::stream, rs::stream> native_streams(rs::stream other)
+std::pair<rs::stream, rs::stream> native_streams(rs::stream other)
 {
     using namespace std;
     switch(other)
@@ -28,7 +28,7 @@ constexpr std::pair<rs::stream, rs::stream> native_streams(rs::stream other)
 }
 
 
-constexpr rs::format best_format(rs::stream other)
+rs::format best_format(rs::stream other)
 {
     using namespace std;
     switch(other)
@@ -283,7 +283,7 @@ void class_attr_enumindex_rec(t_atom* aaa, Arg&& arg, Args&&... args)
 template<typename... Args>
 void class_attr_enumindex(t_class* theclass, std::string attrname, Args&&... args)
 {
-    int num = sizeof...(Args);
+    constexpr int num = sizeof...(Args);
     t_atom aaa[num];
     CLASS_ATTR_STYLE(theclass, attrname.c_str(), 0, "enumindex");
     class_attr_enumindex_rec(aaa, std::forward<Args>(args)...);
@@ -446,7 +446,7 @@ char* make_n_plane_matrix(
 }
 
 
-constexpr int num_planes_from_stream(rs::stream other)
+int num_planes_from_stream(rs::stream other)
 {
     using namespace std;
     switch(other)
@@ -465,7 +465,7 @@ constexpr int num_planes_from_stream(rs::stream other)
     }
 }
 
-constexpr int num_planes_from_format(long format)
+int num_planes_from_format(long format)
 {
     switch((rs::format) format)
     {
@@ -488,7 +488,7 @@ constexpr int num_planes_from_format(long format)
     }
 }
 
-constexpr t_symbol * symbol_from_format(long format)
+t_symbol * symbol_from_format(long format)
 {
     switch((rs::format) format)
     {
@@ -512,7 +512,7 @@ constexpr t_symbol * symbol_from_format(long format)
     }
 }
 
-constexpr t_symbol * symbol_from_stream(rs::stream stream)
+t_symbol * symbol_from_stream(rs::stream stream)
 {
     switch(stream)
     {

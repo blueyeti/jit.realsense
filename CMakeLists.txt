@@ -5,10 +5,14 @@ project(jit.realsense)
 set(LibUSB_FIND_STATIC ON)
 set(BUILD_EXAMPLES OFF)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-	if(APPLE)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe -Ofast -march=corei7-avx")
-	endif()
+if(APPLE)
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -pipe -Ofast -march=corei7-avx")
+else()
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O4")
+endif()
+
+if(CMAKE_GENERATOR MATCHES ".*Win64.*")
+    set(WIN64 1)
 endif()
 
 
@@ -68,10 +72,7 @@ target_link_libraries(jit.realsense PRIVATE MaxAPI Jitter realsense)
 set_target_properties(jit.realsense PROPERTIES CXX_STANDARD 14)
 
 if(APPLE)
-
 	find_library(coreFoundation CoreFoundation)
-	find_library(coreServices CoreServices)
-	find_library(foundation Foundation)
 	find_library(iokit IOKit)
 	target_link_libraries(jit.realsense PUBLIC ${coreFoundation} ${iokit} objc)
 	target_compile_options(jit.realsense PUBLIC
