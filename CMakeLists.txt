@@ -1,10 +1,11 @@
 set(CMAKE_OSX_ARCHITECTURES "i386;x86_64")
-
+ 
 cmake_minimum_required(VERSION 3.5)
 project(jit.realsense)
 set(LibUSB_FIND_STATIC ON)
 set(BUILD_EXAMPLES OFF)
-
+set(BUILD_UNIT_TESTS OFF)
+set(BUILD_SHARED_LIBS OFF)
 if(APPLE)
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -pipe -Ofast -march=corei7-avx")
 else()
@@ -18,6 +19,7 @@ endif()
 
 add_subdirectory(librealsense)
 set(CMAKE_POSITION_INDEPENDENT_CODE True)
+set(BUILD_SHARED_LIBS ON)
 
 set(C74SUPPORT ${CMAKE_CURRENT_SOURCE_DIR}/max-sdk/source/c74support)
 set(MAX_ROOT ${C74SUPPORT}/max-includes)
@@ -57,6 +59,7 @@ elseif(APPLE)
             HINTS
             /System/Library/Frameworks/
             /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers/
+            /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.12.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
             /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
             /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.10.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
             /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.9.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers)
