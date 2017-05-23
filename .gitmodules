@@ -1,3 +1,6 @@
 [submodule "max-sdk"]
 	path = max-sdk
 	url = https://github.com/jcelerier/max-sdk
+[submodule "librealsense"]
+	path = librealsense
+	url = https://github.com/IntelRealSense/librealsense
