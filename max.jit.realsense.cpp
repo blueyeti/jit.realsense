@@ -1,3 +1,4 @@
+#define _HAS_AUTO_PTR_ETC 1
 #include "jit.common.h"
 #include "max.jit.mop.h"
 

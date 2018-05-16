@@ -1,4 +1,5 @@
-#include <librealsense/rs.hpp>
+#define _HAS_AUTO_PTR_ETC 1
+#include <librealsense2/rs.hpp>
 #include <vector>
 #include <array>
 #include <cstdint>
@@ -8,53 +9,40 @@
 
 static const constexpr int jit_realsense_num_outlets = 6;
 
-std::pair<rs::stream, rs::stream> native_streams(rs::stream other)
+std::pair<rs2_stream, rs2_stream> native_streams(rs2_stream other)
 {
     using namespace std;
     switch(other)
     {
-        case rs::stream::depth: return make_pair(rs::stream::depth, rs::stream::depth);
-        case rs::stream::color: return make_pair(rs::stream::color, rs::stream::color);
-        case rs::stream::infrared: return make_pair(rs::stream::infrared, rs::stream::infrared);
-        case rs::stream::infrared2: return make_pair(rs::stream::infrared2, rs::stream::infrared2);
-        case rs::stream::points: return make_pair(rs::stream::depth, rs::stream::depth);
-        case rs::stream::rectified_color: return make_pair(rs::stream::color, rs::stream::depth);
-        case rs::stream::color_aligned_to_depth: return make_pair(rs::stream::color, rs::stream::depth);
-        case rs::stream::infrared2_aligned_to_depth: return make_pair(rs::stream::infrared2, rs::stream::depth);
-        case rs::stream::depth_aligned_to_color: return make_pair(rs::stream::depth, rs::stream::color);
-        case rs::stream::depth_aligned_to_rectified_color: return make_pair(rs::stream::depth, rs::stream::color);
-        case rs::stream::depth_aligned_to_infrared2: return make_pair(rs::stream::depth, rs::stream::infrared2);
+        case RS2_STREAM_DEPTH: return make_pair(RS2_STREAM_DEPTH, RS2_STREAM_DEPTH);
+        case RS2_STREAM_COLOR: return make_pair(RS2_STREAM_COLOR, RS2_STREAM_COLOR);
+        case RS2_STREAM_INFRARED: return make_pair(RS2_STREAM_INFRARED, RS2_STREAM_INFRARED);
+    default:
+        break;
     }
+    throw std::runtime_error("Invalid stream requested");
 }
 
 
-rs::format best_format(rs::stream other)
+rs2_format best_format(rs2_stream other)
 {
     using namespace std;
     switch(other)
     {
-        case rs::stream::depth_aligned_to_color:
-        case rs::stream::depth_aligned_to_rectified_color:
-        case rs::stream::depth_aligned_to_infrared2:
-        case rs::stream::depth: return rs::format::z16;
-
-        case rs::stream::infrared:
-        case rs::stream::infrared2_aligned_to_depth:
-        case rs::stream::infrared2: return rs::format::y8;
-
-        case rs::stream::points: return rs::format::xyz32f;
-
-        case rs::stream::rectified_color:
-        case rs::stream::color_aligned_to_depth:
-        case rs::stream::color: return rs::format::rgb8;
+        case RS2_STREAM_DEPTH: return RS2_FORMAT_Z16;
+        case RS2_STREAM_INFRARED: return RS2_FORMAT_Y8;
+        case RS2_STREAM_COLOR: return RS2_FORMAT_RGB8;
+    default:
+        break;
     }
+    throw std::runtime_error("Invalid stream requested");
 }
 
 
 struct jit_rs_streaminfo
 {
-        long stream = (long)rs::stream::depth;
-        long format = (long)rs::format::z16;
+        rs2_stream stream = RS2_STREAM_INFRARED;
+        rs2_format format = RS2_FORMAT_Z16;
         long rate = 60;
         long dimensions_size = 2;
         std::array<long, 2> dimensions{{640, 480}};
@@ -74,16 +62,20 @@ struct jit_rs_streaminfo
 
 // Our Jitter object instance data
 typedef struct _jit_realsense {
-        t_object	ob{};
-        rs::device* dev{};
+        t_object	ob;
+        rs2::device dev;
+        rs2::config cfg;
+        rs2::pipeline pipe;
+        rs2::pipeline_profile profile;
+        bool streaming{false};
 
-        long device = 0;
-        long out_count = 1;
+        std::uint32_t device = 0;
+        std::size_t out_count = 1;
 
         std::array<jit_rs_streaminfo, jit_realsense_num_outlets> outputs;
 
-        long device_cache = 0;
-        long out_count_cache = 1;
+        std::size_t device_cache = 0;
+        std::size_t out_count_cache = 1;
         std::array<jit_rs_streaminfo, jit_realsense_num_outlets> outputs_cache;
 
         void construct()
@@ -93,7 +85,7 @@ typedef struct _jit_realsense {
             outputs = std::array<jit_rs_streaminfo, jit_realsense_num_outlets>{};
 
             device_cache = 0;
-            out_count = 1;
+            out_count_cache = 1;
             outputs_cache = outputs;
         }
 
@@ -106,7 +98,8 @@ typedef struct _jit_realsense {
             dev = nullptr;
 
             // Try to get the new device
-            auto n_dev = ctx.get_device_count();
+            auto devs = ctx.query_devices();
+            auto n_dev = devs.size();
             post("There are %d connected RealSense devices.\n", n_dev);
 
             if(n_dev <= device)
@@ -115,11 +108,12 @@ typedef struct _jit_realsense {
                 return;
             }
 
-            dev = ctx.get_device((int)device);
+            dev = devs[device];
 
-            post("\nUsing device %d, an %s\n", device, dev->get_name());
-            post("    Serial number: %s\n", dev->get_serial());
-            post("    Firmware version: %s\n", dev->get_firmware_version());
+
+            post("\nUsing device %d, an %s\n", device, dev.get_info(rs2_camera_info::RS2_CAMERA_INFO_NAME));
+            post("    Serial number: %s\n", dev.get_info(rs2_camera_info::RS2_CAMERA_INFO_SERIAL_NUMBER));
+            post("    Firmware version: %s\n", dev.get_info(rs2_camera_info::RS2_CAMERA_INFO_FIRMWARE_VERSION));
 
             rebuild_streams();
 
@@ -128,7 +122,7 @@ typedef struct _jit_realsense {
         }
         catch(const std::exception & e)
         {
-            error("%s\n", e.what());
+            error("realsense: %s\n", e.what());
             if(dev)
                 dev = nullptr;
         }
@@ -139,59 +133,68 @@ typedef struct _jit_realsense {
             cleanup();
 
             // First enable all native streams
-            for(int i = 0; i < out_count; i++)
+            for(std::size_t i = 0; i < out_count; i++)
             {
                 jit_rs_streaminfo& out = outputs[(std::size_t)i];
-                auto streams = native_streams((rs::stream)out.stream);
-                if(streams.first == streams.second && streams.first == (rs::stream) out.stream) // Native stream
+                auto streams = native_streams(out.stream);
+                if(streams.first == streams.second && streams.first == out.stream) // Native stream
                 {
-                    auto format = best_format((rs::stream)streams.first);
-                    dev->enable_stream((rs::stream) out.stream, (int)out.dimensions[0], (int)out.dimensions[1], format, (int)out.rate);
+                    auto format = best_format(streams.first);
+                    cfg.enable_stream(out.stream, out.dimensions[0], out.dimensions[1], format, out.rate);
                 }
             }
 
             // Then enable aligned streams, since they require native streams.
             // If a native stream is missing, it is created with decent defaults.
-            for(int i = 0; i < out_count; i++)
+            for(std::size_t i = 0; i < out_count; i++)
             {
-                jit_rs_streaminfo& out = outputs[(std::size_t)i];
-                auto streams = native_streams((rs::stream)out.stream);
-                if(streams.first != streams.second ||  streams.first != (rs::stream) out.stream) // Aligned stream
+                jit_rs_streaminfo& out = outputs[i];
+                auto streams = native_streams(out.stream);
+                if(streams.first != streams.second ||  streams.first != out.stream) // Aligned stream
                 {
-                    if(!dev->is_stream_enabled(streams.first))
-                        dev->enable_stream(streams.first, rs::preset::best_quality);
-                    if(!dev->is_stream_enabled(streams.second))
-                        dev->enable_stream(streams.second, rs::preset::best_quality);
+                    //if(!cfg.is_stream_enabled(streams.first))
+                        cfg.enable_stream(streams.first);
+                    //if(!dev->is_stream_enabled(streams.second))
+                        cfg.enable_stream(streams.second);
                 }
             }
 
             outputs_cache = outputs;
             if(out_count > 0)
-                dev->start();
+            {
+                profile = pipe.start(cfg);
+                streaming = true;
+            }
         }
         catch(const std::exception & e)
         {
-            error("%s\n", e.what());
+            error("realsense: %s\n", e.what());
         }
 
-        static rs::context& context()
+        static rs2::context& context()
         {
-            static rs::context ctx;
+            static rs2::context ctx;
             return ctx;
         }
 
         void cleanup()
+        try
         {
             if(!dev)
                 return;
 
-            if(dev->is_streaming())
-                dev->stop();
+            if(streaming)
+                pipe.stop();
+            profile = {};
+            streaming = false;
 
-            for(int i = 0; i < 4; i++)
-                dev->disable_stream((rs::stream)i);
-
+            cfg.disable_all_streams();
         }
+        catch(const std::exception & e)
+        {
+            error("realsense: %s\n", e.what());
+        }
+
 } t_jit_realsense;
 
 // prototypes
@@ -276,7 +279,7 @@ void class_attr_enumindex_rec(t_atom*)
 template<typename Arg, typename... Args>
 void class_attr_enumindex_rec(t_atom* aaa, Arg&& arg, Args&&... args)
 {
-    atom_setsym(aaa,gensym_tr(arg));
+    atom_setsym(aaa, gensym_tr(arg));
     class_attr_enumindex_rec(aaa + 1, std::forward<Args>(args)...);
 }
 
@@ -287,7 +290,7 @@ void class_attr_enumindex(t_class* theclass, std::string attrname, Args&&... arg
     t_atom aaa[num];
     CLASS_ATTR_STYLE(theclass, attrname.c_str(), 0, "enumindex");
     class_attr_enumindex_rec(aaa, std::forward<Args>(args)...);
-    CLASS_ATTR_ATTR_ATOMS(theclass, attrname.c_str(), "enumvals", USESYM(atom), 0, num, aaa);
+    CLASS_ATTR_ATTR_ATOMS(theclass, attrname.c_str(), "enumvals", USESYM(atom), 1, num, aaa);
 }
 
 t_jit_err jit_realsense_init(void)
@@ -311,10 +314,7 @@ t_jit_err jit_realsense_init(void)
     add_output_attribute("rs_stream", 0, &jit_rs_streaminfo::stream);
     CLASS_ATTR_LABEL(s_jit_realsense_class, "rs_stream", 0, "Out 1 Stream");
     class_attr_enumindex(s_jit_realsense_class, "rs_stream",
-                         "Depth", "Color", "Infrared", "Infrared 2",
-                         "Points", "Rectified color", "Color -> Depth",
-                         "Infrared 2 -> Depth", "Depth -> Color", "Depth -> Rectified color",
-                         "Depth -> Infrared 2");
+                         "Any", "Depth", "Color", "Infrared", "FishEye");
 /*
     add_output_attribute("rs_format", 0, &jit_rs_streaminfo::format);
     CLASS_ATTR_LABEL(s_jit_realsense_class, "rs_format", 0, "Out 1 Format");
@@ -339,10 +339,7 @@ t_jit_err jit_realsense_init(void)
             add_output_attribute(attr, i, &jit_rs_streaminfo::stream);
             CLASS_ATTR_LABEL(s_jit_realsense_class, attr.c_str(), 0, pretty.c_str());
             class_attr_enumindex(s_jit_realsense_class, attr,
-                                 "Depth", "Color", "Infrared", "Infrared 2",
-                                 "Points", "Rectified color", "Color -> Depth",
-                                 "Infrared 2 -> Depth", "Depth -> Color", "Depth -> Rectified color",
-                                 "Depth -> Infrared 2");
+                                 "Any", "Depth", "Color", "Infrared", "FishEye");
         }
 /*
         {
@@ -376,24 +373,34 @@ t_jit_err jit_realsense_init(void)
     return JIT_ERR_NONE;
 }
 
+template<typename T, typename... Args>
+T* jit_new(t_class* cls, Args&&... args)
+{
+  auto obj = jit_object_alloc(cls);
+  if(obj)
+  {
+    t_object tmp;
+    memcpy(&tmp, obj, sizeof(t_object));
+    auto x = new(obj) T{std::forward<Args>(args)...};
+    memcpy(x, &tmp, sizeof(t_object));
+
+    return x;
+  }
+  return nullptr;
+}
+
 t_jit_realsense *jit_realsense_new(void)
 {
-    t_jit_realsense	*x = NULL;
-
-    x = (t_jit_realsense *)jit_object_alloc(s_jit_realsense_class);
-    if (x)
-    {
-        x->construct();
-        x->rebuild();
-    }
-    return x;
+    auto obj = jit_new<t_jit_realsense>(s_jit_realsense_class);
+    obj->rebuild();
+    return obj;
 }
 
 void jit_realsense_free(t_jit_realsense *x)
 {
-    if(x->dev && x->dev->is_streaming())
+    if(x->streaming)
     {
-        x->dev->stop();
+        x->pipe.stop();
     }
 }
 
@@ -417,7 +424,7 @@ bool compare_matrix_info(t_jit_matrix_info& current, t_jit_matrix_info expected)
 char* make_n_plane_matrix(
         t_jit_matrix_info& out_minfo,
         void* out_matrix,
-        const rs::intrinsics& intrin,
+        const rs2::video_stream_profile& intrin,
         int n_plane,
         t_symbol* type)
 {
@@ -426,8 +433,8 @@ char* make_n_plane_matrix(
 
     expected.planecount = n_plane;
     expected.dimcount = 2;
-    expected.dim[0] = intrin.width;
-    expected.dim[1] = intrin.height;
+    expected.dim[0] = intrin.width();
+    expected.dim[1] = intrin.height();
     expected.type = type;
 
     // Compare this matrix with the one in out_minfo
@@ -446,105 +453,93 @@ char* make_n_plane_matrix(
 }
 
 
-int num_planes_from_stream(rs::stream other)
+int num_planes_from_stream(rs2_stream other)
 {
     using namespace std;
     switch(other)
     {
-        case rs::stream::depth: return 1;
-        case rs::stream::color: return 3;
-        case rs::stream::infrared: return 1;
-        case rs::stream::infrared2: return 1;
-        case rs::stream::points: return 3;
-        case rs::stream::rectified_color: return 3;
-        case rs::stream::color_aligned_to_depth: return 3;
-        case rs::stream::infrared2_aligned_to_depth: return 1;
-        case rs::stream::depth_aligned_to_color: return 1;
-        case rs::stream::depth_aligned_to_rectified_color: return 1;
-        case rs::stream::depth_aligned_to_infrared2: return 1;
+        case RS2_STREAM_DEPTH: return 1;
+        case RS2_STREAM_COLOR: return 3;
+        case RS2_STREAM_INFRARED: return 1;
+    default:
+        break;
     }
+    throw std::runtime_error("Invalid stream");
 }
 
-int num_planes_from_format(long format)
+int num_planes_from_format(rs2_format format)
 {
-    switch((rs::format) format)
+    switch(format)
     {
-        case rs::format::any:
+        case RS2_FORMAT_ANY:
             throw std::logic_error{"any unhandled"};
-        case rs::format::z16:
-        case rs::format::disparity16:
-        case rs::format::y8:
-        case rs::format::y16:
-        case rs::format::yuyv:
+        case RS2_FORMAT_Z16:
+        case RS2_FORMAT_DISPARITY16:
+        case RS2_FORMAT_Y8:
+        case RS2_FORMAT_Y16:
+        case RS2_FORMAT_YUYV:
             return 1;
-        case rs::format::rgb8:
-        case rs::format::bgr8:
-        case rs::format::xyz32f:
+        case RS2_FORMAT_RGB8:
+        case RS2_FORMAT_BGR8:
+        case RS2_FORMAT_XYZ32F:
             return 3;
-        case rs::format::rgba8:
-        case rs::format::bgra8:
-        case rs::format::raw10:
+        case RS2_FORMAT_RGBA8:
+        case RS2_FORMAT_BGRA8:
+        case RS2_FORMAT_RAW10:
             return 4;
     }
+    throw std::logic_error{"num_planes_from_format unhandled"};
 }
 
-t_symbol * symbol_from_format(long format)
+t_symbol * symbol_from_format(rs2_format format)
 {
-    switch((rs::format) format)
+    switch(format)
     {
-        case rs::format::z16:
-        case rs::format::y16:
-        case rs::format::disparity16:
+        case RS2_FORMAT_Z16:
+        case RS2_FORMAT_Y16:
+        case RS2_FORMAT_DISPARITY16:
             return _jit_sym_long;
-        case rs::format::y8:
-        case rs::format::rgb8:
-        case rs::format::bgr8:
-        case rs::format::rgba8:
-        case rs::format::bgra8:
-        case rs::format::yuyv:
+        case RS2_FORMAT_Y8:
+        case RS2_FORMAT_RGB8:
+        case RS2_FORMAT_BGR8:
+        case RS2_FORMAT_RGBA8:
+        case RS2_FORMAT_BGRA8:
+        case RS2_FORMAT_YUYV:
             return _jit_sym_char;
-        case rs::format::xyz32f:
+        case RS2_FORMAT_XYZ32F:
             return _jit_sym_float32;
         // Weird cases :
-        case rs::format::raw10:
-        case rs::format::any:
+        case RS2_FORMAT_RAW10:
+        case RS2_FORMAT_ANY:
             throw std::logic_error{"raw10, any unhandled"};
     }
+    throw std::logic_error{"symbol_from_format unhandled"};
 }
 
-t_symbol * symbol_from_stream(rs::stream stream)
+t_symbol * symbol_from_stream(rs2_stream stream)
 {
     switch(stream)
     {
-        case rs::stream::depth_aligned_to_color:
-        case rs::stream::depth_aligned_to_rectified_color:
-        case rs::stream::depth_aligned_to_infrared2:
-        case rs::stream::depth:
+        case RS2_STREAM_DEPTH:
             return _jit_sym_long;
 
-        case rs::stream::infrared:
-        case rs::stream::infrared2:
-        case rs::stream::rectified_color:
-        case rs::stream::color_aligned_to_depth:
-        case rs::stream::infrared2_aligned_to_depth:
-        case rs::stream::color:
+        case RS2_STREAM_INFRARED:
+        case RS2_STREAM_COLOR:
             return _jit_sym_char;
-
-        case rs::stream::points:
-            return _jit_sym_float32;
     }
+    throw std::logic_error{"symbol_from_stream unhandled"};
 }
 
-template<rs::format>
+template<rs2_format>
 struct copier;
 
 // 16 bit case
 template<>
-struct copier<rs::format::z16>
+struct copier<RS2_FORMAT_Z16>
 {
-        void operator()(int size, const void* rs_matrix, char* max_matrix)
+        void operator()(int size, const rs2::frame& rs_matrix, char* max_matrix)
         {
-            auto image = (const uint16_t *) rs_matrix;
+            auto image = (const uint16_t *) rs_matrix.get_data();
             auto matrix_out = (long*) max_matrix;
 
             std::copy(image, image + size, matrix_out);
@@ -553,11 +548,11 @@ struct copier<rs::format::z16>
 
 // 8 bit case
 template<>
-struct copier<rs::format::y8>
+struct copier<RS2_FORMAT_Y8>
 {
-        void operator()(int size, const void* rs_matrix, char* max_matrix)
+        void operator()(int size, const rs2::frame& rs_matrix, char* max_matrix)
         {
-            auto image = (const uint8_t *) rs_matrix;
+            auto image = (const uint8_t *) rs_matrix.get_data();
             auto matrix_out = (char*) max_matrix;
 
             std::copy(image, image + size, matrix_out);
@@ -565,12 +560,13 @@ struct copier<rs::format::y8>
 };
 
 // Float case
+/*
 template<>
-struct copier<rs::format::xyz32f>
+struct copier<RS2_FORMAT_XYZ32F>
 {
-        void operator()(int size, const void* rs_matrix, char* max_matrix)
+        void operator()(int size, const rs2::frame& rs_matrix, char* max_matrix)
         {
-            auto image = (const rs::float3 *) rs_matrix;
+            auto image = (const rs::float3 *) rs_matrix.get_data();
             auto matrix_out = (float*) max_matrix;
 
             int j = 0;
@@ -582,72 +578,63 @@ struct copier<rs::format::xyz32f>
             }
         }
 };
+*/
 /*
 void do_copy(rs::format fmt, int size, const void* rs_matrix, char* max_matrix)
 {
     switch(fmt)
     {
-        case rs::format::z16:
-        case rs::format::y16:
-        case rs::format::disparity16:
-             return copier<rs::format::z16>{}(size, rs_matrix, max_matrix);
-        case rs::format::y8:
-        case rs::format::rgb8:
-        case rs::format::bgr8:
-        case rs::format::rgba8:
-        case rs::format::bgra8:
-        case rs::format::yuyv:
-            return copier<rs::format::y8>{}(size, rs_matrix, max_matrix);
-        case rs::format::xyz32f:
-            return copier<rs::format::xyz32f>{}(size, rs_matrix, max_matrix);
+        case RS2_FORMAT_z16:
+        case RS2_FORMAT_y16:
+        case RS2_FORMAT_disparity16:
+             return copier<RS2_FORMAT_z16>{}(size, rs_matrix, max_matrix);
+        case RS2_FORMAT_y8:
+        case RS2_FORMAT_rgb8:
+        case RS2_FORMAT_bgr8:
+        case RS2_FORMAT_rgba8:
+        case RS2_FORMAT_bgra8:
+        case RS2_FORMAT_yuyv:
+            return copier<RS2_FORMAT_y8>{}(size, rs_matrix, max_matrix);
+        case RS2_FORMAT_xyz32f:
+            return copier<RS2_FORMAT_xyz32f>{}(size, rs_matrix, max_matrix);
         // Weird cases :
-        case rs::format::raw10:
-        case rs::format::any:
+        case RS2_FORMAT_raw10:
+        case RS2_FORMAT_any:
             throw std::logic_error{"raw10, any unhandled"};
     }
 }
 */
 
-void do_copy(rs::stream str, int size, const void* rs_matrix, char* max_matrix)
+void do_copy(rs2_stream str, int size, const rs2::frame& rs_matrix, char* max_matrix)
 {
     switch(str)
     {
-        case rs::stream::depth_aligned_to_color:
-        case rs::stream::depth_aligned_to_rectified_color:
-        case rs::stream::depth_aligned_to_infrared2:
-        case rs::stream::depth: return copier<rs::format::z16>{}(size, rs_matrix, max_matrix);
-
-        case rs::stream::infrared:
-        case rs::stream::infrared2:
-        case rs::stream::rectified_color:
-        case rs::stream::color_aligned_to_depth:
-        case rs::stream::infrared2_aligned_to_depth:
-        case rs::stream::color: return copier<rs::format::y8>{}(size, rs_matrix, max_matrix);
-
-        case rs::stream::points: return copier<rs::format::xyz32f>{}(size, rs_matrix, max_matrix);
+        case RS2_STREAM_DEPTH: return copier<RS2_FORMAT_Z16>{}(size, rs_matrix, max_matrix);
+        case RS2_STREAM_INFRARED:
+        case RS2_STREAM_COLOR: return copier<RS2_FORMAT_Y8>{}(size, rs_matrix, max_matrix);
     }
 }
-void compute_output(t_jit_realsense *x, void *matrix, const jit_rs_streaminfo& info)
+void compute_output(t_jit_realsense *x, void *matrix, const jit_rs_streaminfo& info, const rs2::frameset& frames)
 {
-    const auto num_planes = num_planes_from_stream((rs::stream)info.stream);
-    const auto sym = symbol_from_stream((rs::stream)info.stream);
-    const rs::stream stream = (rs::stream)info.stream;
+    const auto num_planes = num_planes_from_stream(info.stream);
+    const auto sym = symbol_from_stream(info.stream);
+    const rs2_stream stream = info.stream;
 
-    long lock = (long) jit_object_method(matrix, _jit_sym_lock, 1);
+    auto lock = jit_object_method(matrix, _jit_sym_lock, 1);
 
     t_jit_matrix_info out_minfo;
     jit_object_method(matrix, _jit_sym_getinfo, &out_minfo);
 
     // Get the realsense informations and compare them
     // with the current matrix.
-    const rs::intrinsics intrin = x->dev->get_stream_intrinsics(stream);
-    char* out_bp = make_n_plane_matrix(out_minfo, matrix, intrin,
+    const auto stream_profile = x->profile.get_stream(stream).as<rs2::video_stream_profile>();
+    char* out_bp = make_n_plane_matrix(out_minfo, matrix, stream_profile,
                                        num_planes,
                                        sym);
 
     // Copy the data in the Max Matrix
-    int size = intrin.height * intrin.width * num_planes;
-    do_copy((rs::stream) info.stream, size, x->dev->get_frame_data(stream), out_bp);
+    int size = stream_profile.height() * stream_profile.width() * num_planes;
+    do_copy(info.stream, size, frames.first(stream), out_bp);
 
     jit_object_method(matrix, _jit_sym_lock, lock);
 }
@@ -679,13 +666,13 @@ try
         return JIT_ERR_NONE;
 
     // Fetch new frame from the realsense
-    x->dev->wait_for_frames();
+    auto frameset = x->pipe.wait_for_frames();
 
     for(int i = 0; i < x->out_count; i++)
     {
         if (auto matrix = jit_object_method(outputs, _jit_sym_getindex, i))
         {
-            compute_output(x, matrix, x->outputs[i]);
+            compute_output(x, matrix, x->outputs[i], frameset);
         }
     }
 
