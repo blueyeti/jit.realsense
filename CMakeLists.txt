@@ -5,12 +5,12 @@ project(jit.realsense)
 set(LibUSB_FIND_STATIC ON)
 set(BUILD_EXAMPLES OFF)
 set(BUILD_UNIT_TESTS OFF)
-set(BUILD_SHARED_LIBS OFF)
+set(BUILD_SHARED_LIBS OFF CACHE "" INTERNAL)
 if(APPLE)
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -pipe -Ofast -march=broadwell")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe -Ofast -march=broadwell")
 else()
-  add_definitions(/D_HAS_AUTO_PTR_ETC=1)
+  add_definitions(/D_HAS_AUTO_PTR_ETC=1 /D_SILENCE_CXX17_ALLOCATOR_VOID_DEPRECATION_WARNING /D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /std:c++latest /Ox /MT /arch:AVX2")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /std:c++latest /MTd")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++latest")
@@ -24,7 +24,6 @@ endif()
 
 add_subdirectory(librealsense)
 set(CMAKE_POSITION_INDEPENDENT_CODE True)
-set(BUILD_SHARED_LIBS ON)
 
 set(C74SUPPORT ${CMAKE_CURRENT_SOURCE_DIR}/max-sdk/source/c74support)
 set(MAX_ROOT ${C74SUPPORT}/max-includes)
@@ -60,7 +59,7 @@ elseif(APPLE)
   set_target_properties(Jitter PROPERTIES INTERFACE_LINK_LIBRARIES ${JIT_ROOT}/JitterAPI.framework)
 
   # #include<Files.h> is incompatbile with CMake framework handling
-  FIND_PATH(FILE_H_DIR Files.h
+  find_path(FILE_H_DIR Files.h
             HINTS
             /System/Library/Frameworks/
             /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers/
@@ -75,9 +74,9 @@ elseif(APPLE)
   set(CMAKE_INSTALL_RPATH "@loader_path/")
 endif()
 
-add_library(jit.realsense MODULE jit.realsense.cpp max.jit.realsense.cpp)
+add_library(jit.realsense SHARED jit.realsense.cpp max.jit.realsense.cpp)
 target_link_libraries(jit.realsense PRIVATE MaxAPI Jitter realsense2)
-set_target_properties(jit.realsense PROPERTIES CXX_STANDARD 14)
+set_target_properties(jit.realsense PROPERTIES CXX_STANDARD 17)
 
 if(APPLE)
   find_library(coreFoundation CoreFoundation)
