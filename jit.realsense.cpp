@@ -121,6 +121,8 @@ struct t_jit_realsense
         const jit_rs_streaminfo& out = outputs[(std::size_t)i];
         auto format = best_format(out.stream);
         //auto si = out.stream == RS2_STREAM_INFRARED ? std::clamp(out.stream_index, 1, 2) : -1;
+
+        cfg.enable_device(dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
         cfg.enable_stream(out.stream, /*si,*/ out.dimensions[0], out.dimensions[1], format, out.rate);
       }
 
