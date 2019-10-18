@@ -22,6 +22,7 @@ if(WIN32)
   endif()
 endif()
 
+set(BUILD_EXAMPLES 0)
 add_subdirectory(librealsense)
 set(CMAKE_POSITION_INDEPENDENT_CODE True)
 
