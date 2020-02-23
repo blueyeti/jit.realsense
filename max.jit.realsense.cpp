@@ -4,10 +4,13 @@
 
 struct t_max_jit_realsense
 {
-    static inline void* max_class = nullptr;
+    //static inline void* max_class = nullptr;
+    static void* max_class;
     t_object ob;
     void *obex;
 };
+
+void* t_max_jit_realsense::max_class = nullptr;
 
 // Taken from jit.noise example
 void max_jit_realsense_outputmatrix(t_max_jit_realsense *x)

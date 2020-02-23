@@ -162,9 +162,14 @@ struct t_jit_realsense
       error("realsense: %s\n", e.what());
     }
 
-    static inline t_class* max_class{};
+    //static inline t_class* max_class{};
+    //static inline t_class* max_class;
+    //static t_class* max_class;
+    static t_class* max_class;
+    //t_class* max_class;
 };
 
+t_class* t_jit_realsense::max_class{};
 
 t_jit_realsense *jit_realsense_new(void)
 {
