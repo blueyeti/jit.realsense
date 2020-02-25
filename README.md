@@ -38,6 +38,31 @@ make sure submodules are pulled, if not do in Terminal: `git submodule update --
   - The older branch may need the `librealsense2_Poller_bsd.patch` applied to `Poller_bsd.cpp` in librealsense2 to compile; newer shouldn't need it.
   -  (to restart from scratch, remove that build directory and redo the steps)
 
+### Using Xcode to build/debug jit.realsense project:
+
+- Install Xcode via AppStore
+- Install Homebrew package manager.
+- Install the following packages via Homebrew:
+
+```
+brew install libusb pkg-config
+brew install homebrew/core/glfw3
+brew install cmake
+```
+- In jit.realsense directory, run:
+```
+mkdir build && cd build
+sudo xcode-select --reset
+cmake .. -DBUILD_EXAMPLES=true -DBUILD_WITH_OPENMP=false -DHWM_OVER_XU=false -G Xcode
+open jit.realsense.xcodeproj
+```
+
+Building in Xcode will have issues with including MacOS develompent framework. 
+(eg. 'Files.h' file not found - which locates in MacOS SDK library frameworks: ```
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers/Files.h
+```):
+
+Need to figure out how to include header files of system frameworks to the project :P
 
 ## Original Instructions from upstream
 
