@@ -20,8 +20,7 @@ under `jit.realsense/` as the submodule pointer in the original repo was broken:
 
 - Clone and pull those branches in (for convenience can use
 separate clones for (1) or (2), if using GitHub Desktop or similar,
-make sure submodules are pulled, if not do in Terminal: `git submodule
-init --recursive`
+make sure submodules are pulled, if not do in Terminal: `git submodule update --init --recursive`
 - In Terminal in `jit.realsense/`
   ```#!bash
   mkdir build
