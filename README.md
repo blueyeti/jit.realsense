@@ -38,7 +38,7 @@ make sure submodules are pulled, if not do in Terminal: `git submodule update --
   - The older branch may need the `librealsense2_Poller_bsd.patch` applied to `Poller_bsd.cpp` in librealsense2 to compile; newer shouldn't need it.
   -  (to restart from scratch, remove that build directory and redo the steps)
 
-### Using Xcode to build/debug jit.realsense project [Blocked]:
+### Using Xcode to build/debug jit.realsense project:
 
 - Install Xcode via AppStore
 - Install Homebrew package manager.
@@ -58,14 +58,36 @@ cmake .. -DBUILD_EXAMPLES=true -DBUILD_WITH_OPENMP=false -DHWM_OVER_XU=false -G 
 open jit.realsense.xcodeproj
 ```
 
-Building in Xcode will have issues with including MacOS develompent framework. 
-(eg. 'Files.h' file not found - which locates in MacOS SDK library frameworks: 
-```
-/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers/Files.h
-```
-):
+Before building, please add the following directory path in the build settings of jit.realsense project:
 
-TODOs: Need to figure out how to include header files of system frameworks to the project.
+```
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
+```
+
+Header Search Paths: (recursive)
+System Header Search Paths: (recursive)
+
+
+Click the build button - with finger crossed.. (You might need to comment out the line that throw sqlite3 fastmath tag error.)
+
+After Successfully built the project - please check target file jit.realsense/build/Debug/jit.realsense is prensented (File size @21MB)
+
+Then in jit.realsense/build directory, follow the similar steps in CMake build:
+```
+mkdir -p Debug/jit.realsense.mxo/Contents/MacOS/
+cd Debug
+cp ../../Info.plist ../../PkgInfo jit.realsense.mxo/Contents/
+cp ../../patch/example.maxpat .
+cp jit.realsense jit.realsense.mxo/Contents/MacOS/ && open example.maxpat
+```
+
+Whenever you make changes to jit.realsense.cpp or other related header or cpp files, rebuild only the jit.realsense project (about few seconds). Then quit Max 8 and run
+```
+cp jit.realsense jit.realsense.mxo/Contents/MacOS/ && open example.maxpat
+```
+
+The changes should be applied in the externals. The response cycle should be acceptable now.
+
 
 ## Original Instructions from upstream
 
