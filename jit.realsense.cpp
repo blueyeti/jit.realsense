@@ -5,15 +5,16 @@
 // To be able to iterate over rs::stream
 static const constexpr int jit_realsense_num_outlets = 6;
 
-static
-rs2_format best_format(rs2_stream other)
+static rs2_format best_format(rs2_stream other)
 {
   using namespace std;
   switch(other)
   {
-    case RS2_STREAM_DEPTH: return RS2_FORMAT_Z16;
+    case RS2_STREAM_DEPTH:
+          return RS2_FORMAT_Z16;
     case RS2_STREAM_INFRARED: return RS2_FORMAT_Y8;
-    case RS2_STREAM_COLOR: return RS2_FORMAT_RGB8;
+    case RS2_STREAM_COLOR:
+          return RS2_FORMAT_RGB8;
     default:
       break;
   }
@@ -21,23 +22,22 @@ rs2_format best_format(rs2_stream other)
 }
 
 
-struct jit_rs_streaminfo
-{
+struct jit_rs_streaminfo {
     rs2_stream stream = RS2_STREAM_INFRARED;
     int stream_index = 1;
     long rate = 60;
     long dimensions_size = 2; // do not remove, Max uses it.
-    std::array<long, 2> dimensions{{640, 480}};
+    // https://dev.intelrealsense.com/docs/tuning-depth-cameras-for-best-performance
+    std::array<long, 2> dimensions{{848, 480}};
 
-    friend bool operator!=(const jit_rs_streaminfo& lhs, const jit_rs_streaminfo& rhs)
-    {
+    friend bool operator!=(const jit_rs_streaminfo& lhs, const jit_rs_streaminfo& rhs) {
       return lhs.stream != rhs.stream
           || lhs.stream_index != rhs.stream_index
           || lhs.rate != rhs.rate
           || lhs.dimensions != rhs.dimensions;
     }
-    friend bool operator==(const jit_rs_streaminfo& lhs, const jit_rs_streaminfo& rhs)
-    {
+    
+    friend bool operator==(const jit_rs_streaminfo& lhs, const jit_rs_streaminfo& rhs) {
       return !(lhs != rhs);
     }
 };
@@ -50,11 +50,12 @@ struct t_jit_realsense
     rs2::config cfg;
     rs2::pipeline pipe;
     rs2::pipeline_profile profile;
+    
     bool streaming{false};
 
     std::uint32_t device = 0;
     std::size_t out_count = 1;
-
+    
     std::array<jit_rs_streaminfo, jit_realsense_num_outlets> outputs;
 
     std::size_t device_cache = 0;
@@ -99,13 +100,12 @@ struct t_jit_realsense
       post("    Firmware version: %s\n", dev.get_info(rs2_camera_info::RS2_CAMERA_INFO_FIRMWARE_VERSION));
 
       rebuild_streams();
+      // post("stream rebuilt \n");
 
       device_cache = device;
       out_count_cache = out_count;
-    }
-    catch(const std::exception & e)
-    {
-      error("realsense: %s\n", e.what());
+    } catch(const std::exception & e) {
+      error("realsense: rebuild failed %s\n", e.what());
       if(dev)
         dev = nullptr;
     }
@@ -121,9 +121,12 @@ struct t_jit_realsense
         const jit_rs_streaminfo& out = outputs[(std::size_t)i];
         auto format = best_format(out.stream);
         //auto si = out.stream == RS2_STREAM_INFRARED ? std::clamp(out.stream_index, 1, 2) : -1;
-
+        // post("Enabling device...\n");
         cfg.enable_device(dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
+        // post("Device enabled\n");
+        // post("Enabling stream...\n");
         cfg.enable_stream(out.stream, /*si,*/ out.dimensions[0], out.dimensions[1], format, out.rate);
+        // post("Stream enabled...\n");
       }
 
       outputs_cache = outputs;
@@ -132,34 +135,28 @@ struct t_jit_realsense
         profile = pipe.start(cfg);
         streaming = true;
       }
-    }
-    catch(const std::exception & e)
-    {
-      error("realsense: %s\n", e.what());
+    } catch(const std::exception & e) {
+      error("realsense: rebuild streams failed %s\n", e.what());
     }
 
-    static rs2::context& context()
-    {
+    static rs2::context& context() {
       static rs2::context ctx;
       return ctx;
     }
 
     void cleanup()
-    try
-    {
+    try {
       if(!dev)
         return;
-
+        
       if(streaming)
         pipe.stop();
       profile = {};
       streaming = false;
 
       cfg.disable_all_streams();
-    }
-    catch(const std::exception & e)
-    {
-      error("realsense: %s\n", e.what());
+    } catch(const std::exception & e) {
+      error("realsense: cleanup failed %s\n", e.what());
     }
 
     //static inline t_class* max_class{};
@@ -171,24 +168,19 @@ struct t_jit_realsense
 
 t_class* t_jit_realsense::max_class{};
 
-t_jit_realsense *jit_realsense_new(void)
-{
+t_jit_realsense *jit_realsense_new(void) {
   auto obj = jit_new<t_jit_realsense>(t_jit_realsense::max_class);
   obj->rebuild();
   return obj;
 }
 
-void jit_realsense_free(t_jit_realsense *x)
-{
-  if(x->streaming)
-  {
+void jit_realsense_free(t_jit_realsense *x) {
+  if(x->streaming) {
     x->pipe.stop();
   }
 }
 
-static
-bool compare_matrix_info(t_jit_matrix_info& current, t_jit_matrix_info expected)
-{
+static bool compare_matrix_info(t_jit_matrix_info& current, t_jit_matrix_info expected) {
   bool res = true;
   res &= current.planecount == expected.planecount;
   res &= current.dimcount == expected.dimcount;
@@ -196,16 +188,15 @@ bool compare_matrix_info(t_jit_matrix_info& current, t_jit_matrix_info expected)
   if(!res)
     return false;
 
-  for(int i = 0; i < current.dimcount; i++)
-  {
+  for(int i = 0; i < current.dimcount; i++) {
     res &= current.dim[i] == expected.dim[i];
+    if (!res) return false;
   }
 
   return res;
 }
 
-static
-char* make_n_plane_matrix(
+static char* make_n_plane_matrix(
     t_jit_matrix_info& out_minfo,
     void* out_matrix,
     const rs2::video_stream_profile& intrin,
@@ -231,7 +222,7 @@ char* make_n_plane_matrix(
     auto old = expected;
 
     jit_object_method(out_matrix, _jit_sym_getinfo, &expected);
-    post("%d %d", old.dim[0], old.dim[1]);
+    // post("%d %d", old.dim[0], old.dim[1]);
   }
 
   // Return a pointer to the data
@@ -240,8 +231,7 @@ char* make_n_plane_matrix(
   return out_bp;
 }
 
-static
-int num_planes_from_stream(rs2_stream other)
+static int num_planes_from_stream(rs2_stream other)
 {
   using namespace std;
   switch(other)
@@ -255,8 +245,7 @@ int num_planes_from_stream(rs2_stream other)
   throw std::runtime_error("Invalid stream");
 }
 
-static
-int num_planes_from_format(rs2_format format)
+static int num_planes_from_format(rs2_format format)
 {
   switch(format)
   {
@@ -280,8 +269,7 @@ int num_planes_from_format(rs2_format format)
   throw std::logic_error{"num_planes_from_format unhandled"};
 }
 
-static
-t_symbol * symbol_from_format(rs2_format format)
+static t_symbol * symbol_from_format(rs2_format format)
 {
   switch(format)
   {
@@ -306,8 +294,7 @@ t_symbol * symbol_from_format(rs2_format format)
   throw std::logic_error{"symbol_from_format unhandled"};
 }
 
-static
-t_symbol * symbol_from_stream(rs2_stream stream)
+static t_symbol * symbol_from_stream(rs2_stream stream)
 {
   switch(stream)
   {
@@ -321,25 +308,26 @@ t_symbol * symbol_from_stream(rs2_stream stream)
   throw std::logic_error{"symbol_from_stream unhandled"};
 }
 
-template<rs2_format>
-struct copier;
+template<rs2_format> struct copier;
 
 // 16 bit case
-template<>
-struct copier<RS2_FORMAT_Z16>
+template<> struct copier<RS2_FORMAT_Z16>
 {
     void operator()(int size, const rs2::frame& rs_matrix, char* max_matrix)
     {
       const auto image = (const uint16_t *)(rs_matrix.get_data());
-      auto matrix_out = (long*)(max_matrix);
-
+      // It seems declaring output matrix as long will cause std::copy write to
+      // inaccessible memory address hence cause the program to crash.
+      // long - 4 bytes crash,
+      // uint32_t - 4 bytes success
+      // uint64_t - 8 bytes unsigned crash. Why???
+      auto matrix_out = (uint32_t*)(max_matrix);
       std::copy(image, image + size, matrix_out);
     }
 };
 
 // 8 bit case
-template<>
-struct copier<RS2_FORMAT_Y8>
+template<> struct copier<RS2_FORMAT_Y8>
 {
     void operator()(int size, const rs2::frame& rs_matrix, char* max_matrix)
     {
@@ -350,8 +338,7 @@ struct copier<RS2_FORMAT_Y8>
     }
 };
 
-static
-void do_copy(rs2_format str, int size, const rs2::frame& rs_matrix, char* max_matrix)
+static void do_copy(rs2_format str, int size, const rs2::frame& rs_matrix, char* max_matrix)
 {
   switch(str)
   {
@@ -361,13 +348,13 @@ void do_copy(rs2_format str, int size, const rs2::frame& rs_matrix, char* max_ma
   }
 }
 
-static
-void compute_output(t_jit_realsense *x, void *matrix, const jit_rs_streaminfo& info, const rs2::frameset& frames)
+static void compute_output(t_jit_realsense *x, void *matrix, const jit_rs_streaminfo& info, const rs2::frameset& frames)
 {
+  // post("Start computing matrix output\n");
   const auto num_planes = num_planes_from_stream(info.stream);
   const auto sym = symbol_from_stream(info.stream);
   const rs2_stream stream = info.stream;
-
+    
   auto lock = jit_object_method(matrix, _jit_sym_lock, 1);
 
   t_jit_matrix_info out_minfo{};
@@ -376,44 +363,34 @@ void compute_output(t_jit_realsense *x, void *matrix, const jit_rs_streaminfo& i
   // Get the realsense informations and compare them
   // with the current matrix.
   const auto stream_profile = x->profile.get_stream(stream).as<rs2::video_stream_profile>();
-  char* out_bp = make_n_plane_matrix(out_minfo, matrix, stream_profile,
-                                     num_planes,
-                                     sym);
+  char* out_bp = make_n_plane_matrix(out_minfo, matrix, stream_profile, num_planes, sym);
 
+    
   // Copy the data in the Max Matrix
   int size = stream_profile.height() * stream_profile.width() * num_planes;
-  //post("FORMAT: %d", info.format);
+    
   do_copy(best_format(info.stream), size, frames.first(stream), out_bp);
 
   jit_object_method(matrix, _jit_sym_lock, lock);
 }
 
-static
-t_jit_err jit_realsense_matrix_calc(t_jit_realsense* x, void *, void *outputs)
+static t_jit_err jit_realsense_matrix_calc(t_jit_realsense* x, void *, void *outputs)
 try
 {
   // Get and check the data.
-  if(!x || !x->dev)
+  if (!x || !x->dev)
   {
     error("No device");
     return JIT_ERR_INVALID_PTR;
   }
 
-  if(x->device != x->device_cache)
-  {
+  if (x->device != x->device_cache || x->out_count != x->out_count_cache) {
     x->rebuild();
-  }
-  else if(x->out_count != x->out_count_cache)
-  {
-    x->rebuild();
-  }
-  else if(x->outputs != x->outputs_cache)
-  {
+  } else if(x->outputs != x->outputs_cache) {
     x->rebuild_streams();
   }
 
-  if(x->out_count == 0)
-    return JIT_ERR_NONE;
+  if (x->out_count < 1) return JIT_ERR_NONE;
 
   // Fetch new frame from the realsense
   auto frameset = x->pipe.wait_for_frames();
@@ -427,10 +404,8 @@ try
   }
 
   return JIT_ERR_NONE;
-}
-catch(const std::exception & e)
-{
-  error("%s\n", e.what());
+} catch(const std::exception & e) {
+  error("Matrix Calc: %s\n", e.what());
   x->cleanup();
   return JIT_ERR_GENERIC;
 }
@@ -438,7 +413,6 @@ catch(const std::exception & e)
 t_jit_err jit_realsense_init()
 {
   t_jit_object	*mop;
-
   t_jit_realsense::max_class = (t_class*)jit_class_new("jit_realsense", (method)jit_realsense_new, (method)jit_realsense_free, sizeof(t_jit_realsense), 0);
 
   // add matrix operator (mop)
