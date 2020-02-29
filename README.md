@@ -20,13 +20,13 @@ brew install cmake
 git clone https://github.com/blueyeti/jit.realsense.git
 ```
 
--- Initialize required git submodules (namely `librealsense` and `maxsdk`)
+- Initialize required git submodules (namely `librealsense` and `maxsdk`)
 ```
 cd jit.realsense
 git submodule update --init --recursive
 ```
 
-- Make a build in jit.realsense/
+- Setup for build in `jit.realsense` folder
 
 ```
 mkdir build && cd build
@@ -35,21 +35,21 @@ cmake .. -DBUILD_EXAMPLES=true -DBUILD_WITH_OPENMP=false -DHWM_OVER_XU=false -G 
 open jit.realsense.xcodeproj
 ```
 
-Before building, please add the following directory path in the build settings of jit.realsense project:
+- Add System Header Path to Build Settings of `jit.realsense` target.
 
 ```
 /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
 ```
 
-Header Search Paths:
-System Header Search Paths:
+- Click the build button or press `Command + B`
 
-
-Click the build button - with finger crossed.. (You might need to comment out the line that throw sqlite3 fastmath tag error.)
+ (You might need to comment out the line that throw sqlite3 fastmath tag error.)
 
 After Successfully built the project - please check target file jit.realsense/build/Debug/jit.realsense is prensented (File size @21MB)
 
-Then in jit.realsense/build directory, follow the similar steps in CMake build:
+- Prepare the .mxo package for Max 8 to load
+
+In `jit.realsense/build` folder
 ```
 mkdir -p Debug/jit.realsense.mxo/Contents/MacOS/
 cd Debug
