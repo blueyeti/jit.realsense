@@ -215,18 +215,21 @@ char* make_n_plane_matrix(
   expected.dim[0] = intrin.width();
   expected.dim[1] = intrin.height();
   expected.type = type;
+	
+  // not sure if this is true yet
+  expected.flags = JIT_MATRIX_DATA_PACK_TIGHT;
 
   // Compare this matrix with the one in out_minfo
   if(!compare_matrix_info(out_minfo, expected))
   {
     // Change the matrix if it is different
-    jit_object_method(out_matrix, _jit_sym_setinfo, &expected);
-    // c.f. _jit_sym_setinfo usage in jit.openni
-    jit_object_method(out_matrix, _jit_sym_setinfo, &expected);
+	  
+	// use setinfo_ex to preserve the flags
+    jit_object_method(out_matrix, _jit_sym_setinfo_ex, &expected);
     auto old = expected;
 
     jit_object_method(out_matrix, _jit_sym_getinfo, &expected);
-    post("%d %d", old.dim[0], old.dim[1]);
+    //post("%d %d", old.dim[0], old.dim[1]);
   }
 
   // Return a pointer to the data
@@ -326,7 +329,7 @@ struct copier<RS2_FORMAT_Z16>
     void operator()(int size, const rs2::frame& rs_matrix, char* max_matrix)
     {
       const auto image = (const uint16_t *)(rs_matrix.get_data());
-      auto matrix_out = (long*)(max_matrix);
+      auto matrix_out = (t_int32*)(max_matrix);
 
       std::copy(image, image + size, matrix_out);
     }
