@@ -4,6 +4,9 @@
 
 // To be able to iterate over rs::stream
 static const constexpr int jit_realsense_num_outlets = 6;
+static rs2_stream stream_from_long(long stream) {
+	return static_cast<rs2_stream>(stream);
+}
 
 static
 rs2_format best_format(rs2_stream other)
@@ -23,8 +26,8 @@ rs2_format best_format(rs2_stream other)
 
 struct jit_rs_streaminfo
 {
-    rs2_stream stream = RS2_STREAM_INFRARED;
-    int stream_index = 1;
+    long stream = RS2_STREAM_INFRARED;
+    long stream_index = 1;
     long rate = 60;
     long dimensions_size = 2; // do not remove, Max uses it.
     std::array<long, 2> dimensions{{640, 480}};
@@ -52,8 +55,8 @@ struct t_jit_realsense
     rs2::pipeline_profile profile;
     bool streaming{false};
 
-    std::uint32_t device = 0;
-    std::size_t out_count = 1;
+    long device = 0;
+    long out_count = 1;
 
     std::array<jit_rs_streaminfo, jit_realsense_num_outlets> outputs;
 
@@ -116,14 +119,14 @@ struct t_jit_realsense
       cleanup();
 
       // First enable all native streams
-      for(std::size_t i = 0; i < out_count; i++)
+      for(long i = 0; i < out_count; i++)
       {
         const jit_rs_streaminfo& out = outputs[(std::size_t)i];
-        auto format = best_format(out.stream);
+        auto format = best_format(stream_from_long(out.stream));
         //auto si = out.stream == RS2_STREAM_INFRARED ? std::clamp(out.stream_index, 1, 2) : -1;
 
         cfg.enable_device(dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
-        cfg.enable_stream(out.stream, /*si,*/ out.dimensions[0], out.dimensions[1], format, out.rate);
+        cfg.enable_stream(stream_from_long(out.stream), /*si,*/ out.dimensions[0], out.dimensions[1], format, out.rate);
       }
 
       outputs_cache = outputs;
@@ -362,9 +365,9 @@ void do_copy(rs2_format str, int size, const rs2::frame& rs_matrix, char* max_ma
 static
 void compute_output(t_jit_realsense *x, void *matrix, const jit_rs_streaminfo& info, const rs2::frameset& frames)
 {
-  const auto num_planes = num_planes_from_stream(info.stream);
-  const auto sym = symbol_from_stream(info.stream);
-  const rs2_stream stream = info.stream;
+  const auto num_planes = num_planes_from_stream(stream_from_long(info.stream));
+  const auto sym = symbol_from_stream(stream_from_long(info.stream));
+  const rs2_stream stream = stream_from_long(info.stream);
 
   auto lock = jit_object_method(matrix, _jit_sym_lock, 1);
 
@@ -381,7 +384,7 @@ void compute_output(t_jit_realsense *x, void *matrix, const jit_rs_streaminfo& i
   // Copy the data in the Max Matrix
   int size = stream_profile.height() * stream_profile.width() * num_planes;
   //post("FORMAT: %d", info.format);
-  do_copy(best_format(info.stream), size, frames.first(stream), out_bp);
+  do_copy(best_format(stream_from_long(info.stream)), size, frames.first(stream), out_bp);
 
   jit_object_method(matrix, _jit_sym_lock, lock);
 }
@@ -397,11 +400,11 @@ try
     return JIT_ERR_INVALID_PTR;
   }
 
-  if(x->device != x->device_cache)
+  if(x->device != (long)x->device_cache)
   {
     x->rebuild();
   }
-  else if(x->out_count != x->out_count_cache)
+  else if(x->out_count != (long)x->out_count_cache)
   {
     x->rebuild();
   }
@@ -416,7 +419,7 @@ try
   // Fetch new frame from the realsense
   auto frameset = x->pipe.wait_for_frames();
 
-  for(int i = 0; i < x->out_count; i++)
+  for(int i = 0; i < (int)x->out_count; i++)
   {
     if (auto matrix = jit_object_method(outputs, _jit_sym_getindex, i))
     {
