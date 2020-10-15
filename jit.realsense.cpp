@@ -3,7 +3,8 @@
 #include "max_utils.hpp"
 
 // To be able to iterate over rs::stream
-static const constexpr int jit_realsense_num_outlets = 6;
+static const constexpr int jit_realsense_max_num_outlets = 6;
+
 static rs2_stream stream_from_long(long stream) {
 	return static_cast<rs2_stream>(stream);
 }
@@ -58,17 +59,17 @@ struct t_jit_realsense
     long device = 0;
     long out_count = 1;
 
-    std::array<jit_rs_streaminfo, jit_realsense_num_outlets> outputs;
+    std::array<jit_rs_streaminfo, jit_realsense_max_num_outlets> outputs;
 
     std::size_t device_cache = 0;
     std::size_t out_count_cache = 1;
-    std::array<jit_rs_streaminfo, jit_realsense_num_outlets> outputs_cache;
+    std::array<jit_rs_streaminfo, jit_realsense_max_num_outlets> outputs_cache;
 
     void construct()
     {
       device = 0;
       out_count = 1;
-      outputs = std::array<jit_rs_streaminfo, jit_realsense_num_outlets>{};
+      outputs = std::array<jit_rs_streaminfo, jit_realsense_max_num_outlets>{};
 
       device_cache = 0;
       out_count_cache = 1;
@@ -443,7 +444,7 @@ t_jit_err jit_realsense_init()
   t_jit_realsense::max_class = (t_class*)jit_class_new("jit_realsense", (method)jit_realsense_new, (method)jit_realsense_free, sizeof(t_jit_realsense), 0);
 
   // add matrix operator (mop)
-  mop = (t_jit_object *)jit_object_new(_jit_sym_jit_mop, 0, jit_realsense_num_outlets); // args are  num inputs and num outputs
+  mop = (t_jit_object *)jit_object_new(_jit_sym_jit_mop, 0, -1); //no matrix inputs, and variable number of outputs
   jit_class_addadornment(t_jit_realsense::max_class, mop);
 
   // add method(s)
@@ -470,7 +471,7 @@ t_jit_err jit_realsense_init()
   add_array_output_attribute<t_jit_realsense>("rs_dim", 0, &jit_rs_streaminfo::dimensions);
   CLASS_ATTR_LABEL(t_jit_realsense::max_class, "rs_dim", 0, "Out 1 Dims");
 
-  for(int i = 1; i < jit_realsense_num_outlets; i++)
+  /*for(int i = 1; i < jit_realsense_num_outlets; i++)
   {
     const std::string num_str = std::to_string(i + 1);
     const std::string out_str = "out" + num_str;
@@ -507,7 +508,7 @@ t_jit_err jit_realsense_init()
       add_array_output_attribute<t_jit_realsense>(attr, i, &jit_rs_streaminfo::dimensions);
       CLASS_ATTR_LABEL(t_jit_realsense::max_class, attr.c_str(), 0, pretty.c_str());
     }
-  }
+  }*/
 
 
   // finalize class
