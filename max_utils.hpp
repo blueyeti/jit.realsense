@@ -17,18 +17,23 @@ intptr_t get_offset(T U::*member, int N)
 
 
 template <typename Type, typename T>
+static void add_attribute_flags(std::string name, T Type::*member, long flags)
+{
+	jit_class_addattr(Type::max_class,
+					  (t_jit_object*) jit_object_new(
+													 _jit_sym_jit_attr_offset,
+													 name.c_str(),
+													 _jit_sym_long,
+													 flags,
+													 (method)nullptr,
+													 (method)nullptr,
+													 get_offset(member)));
+}
+
+template <typename Type, typename T>
 static void add_attribute(std::string name, T Type::*member)
 {
-    const auto flags = JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_USURP_LOW;
-    jit_class_addattr(Type::max_class,
-                      (t_jit_object*) jit_object_new(
-                          _jit_sym_jit_attr_offset,
-                          name.c_str(),
-                          _jit_sym_long,
-                          flags,
-                          (method)nullptr,
-                          (method)nullptr,
-                          get_offset(member)));
+	add_attribute_flags(name, member, JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_USURP_LOW);
 }
 
 template <typename Type, typename T, typename Gadget>

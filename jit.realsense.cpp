@@ -2,9 +2,6 @@
 #include "jit.realsense.hpp"
 #include "max_utils.hpp"
 
-// To be able to iterate over rs::stream
-static const constexpr int jit_realsense_max_num_outlets = 6;
-
 static rs2_stream stream_from_long(long stream) {
 	return static_cast<rs2_stream>(stream);
 }
@@ -62,7 +59,6 @@ struct t_jit_realsense
 	std::array<jit_rs_streaminfo, jit_realsense_max_num_outlets> outputs;
 
 	std::size_t device_cache = 0;
-	std::size_t out_count_cache = 1;
 	std::array<jit_rs_streaminfo, jit_realsense_max_num_outlets> outputs_cache;
 
 	void construct()
@@ -72,7 +68,6 @@ struct t_jit_realsense
 		outputs = std::array<jit_rs_streaminfo, jit_realsense_max_num_outlets>{};
 
 		device_cache = 0;
-		out_count_cache = 1;
 		outputs_cache = outputs;
 	}
 
@@ -105,7 +100,6 @@ struct t_jit_realsense
 		rebuild_streams();
 
 		device_cache = device;
-		out_count_cache = out_count;
 	}
 	catch(const std::exception & e)
 	{
@@ -170,9 +164,10 @@ struct t_jit_realsense
 };
 
 
-t_jit_realsense *jit_realsense_new(void)
+t_jit_realsense *jit_realsense_new(long outcount)
 {
 	auto obj = jit_new<t_jit_realsense>(t_jit_realsense::max_class);
+	obj->out_count = outcount;
 	obj->rebuild();
 	return obj;
 }
@@ -405,10 +400,6 @@ try
 	{
 		x->rebuild();
 	}
-	else if(x->out_count != (long)x->out_count_cache)
-	{
-		x->rebuild();
-	}
 	else if(x->outputs != x->outputs_cache)
 	{
 		x->rebuild_streams();
@@ -441,7 +432,7 @@ t_jit_err jit_realsense_init()
 {
 	t_jit_object	*mop;
 
-	t_jit_realsense::max_class = (t_class*)jit_class_new("jit_realsense", (method)jit_realsense_new, (method)jit_realsense_free, sizeof(t_jit_realsense), 0);
+	t_jit_realsense::max_class = (t_class*)jit_class_new("jit_realsense", (method)jit_realsense_new, (method)jit_realsense_free, sizeof(t_jit_realsense), A_DEFLONG, 0);
 
 	// add matrix operator (mop)
 	mop = (t_jit_object *)jit_object_new(_jit_sym_jit_mop, 0, -1); //no matrix inputs, and variable number of outputs
@@ -453,7 +444,7 @@ t_jit_err jit_realsense_init()
 	// Add attributes :
 
 	add_attribute("rs_device", &t_jit_realsense::device);
-	add_attribute("rs_out_count", &t_jit_realsense::out_count);
+	add_attribute_flags("rs_out_count", &t_jit_realsense::out_count, JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_OPAQUE_USER);
 
 	add_output_attribute<t_jit_realsense>("rs_stream", 0, &jit_rs_streaminfo::stream);
 	CLASS_ATTR_LABEL(t_jit_realsense::max_class, "rs_stream", 0, "Out 1 Stream");

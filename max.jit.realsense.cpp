@@ -45,11 +45,27 @@ void *max_jit_realsense_new(t_symbol *, long argc, t_atom *argv)
 	auto x = max_jit_object_alloc((maxclass*)t_max_jit_realsense::max_class, gensym("jit_realsense"));
 	if (x)
 	{
-		auto o = jit_object_new(gensym("jit_realsense"));
+		long outcount;
+		if (argc && (outcount = atom_getlong(argv))) {
+			CLIP_ASSIGN(outcount, 1, jit_realsense_max_num_outlets);
+		}
+		else {
+			outcount = 1;
+		}
+		
+		auto o = jit_object_new(gensym("jit_realsense"), outcount);
 		if (o)
 		{
-			max_jit_mop_setup_simple(x, o, argc, argv);
-			max_jit_attr_args(x, (short)argc, argv);
+			max_jit_obex_jitob_set(x,o);
+			max_jit_obex_dumpout_set(x, outlet_new(x, nullptr));
+			max_jit_mop_setup(x);
+			max_jit_mop_inputs(x);
+			
+			max_jit_mop_variable_addoutputs(x, outcount);
+			
+			max_jit_mop_outputs(x);
+			max_jit_mop_matrix_args(x, argc, argv);
+			max_jit_attr_args(x, argc, argv);
 		}
 		else
 		{
