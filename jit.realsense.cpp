@@ -164,9 +164,49 @@ struct t_jit_realsense
 };
 
 
+
 t_jit_realsense *jit_realsense_new(long outcount)
 {
 	auto obj = jit_new<t_jit_realsense>(t_jit_realsense::max_class);
+	
+	for(int i = 1; i < outcount; i++) {
+		const std::string num_str = std::to_string(i + 1);
+		const std::string out_str = "out" + num_str;
+		const std::string out_maj_str = "Out" + num_str + " ";
+
+		{
+			auto attrstr = out_str + "_rs_stream";
+			auto pretty = "\"" + out_maj_str + "Stream\"";
+			add_dynamic_attribute<t_jit_realsense>((t_object*)obj, attrstr, i, 1, &jit_rs_streaminfo::stream);
+			object_attr_addattr_parse((t_object*)obj, attrstr.c_str(), "label", _sym_symbol, 0, pretty.c_str());
+			object_attr_addattr_parse((t_object*)obj, attrstr.c_str(), "style", _sym_symbol, 0, "enumindex");
+			object_attr_addattr_parse((t_object*)obj, attrstr.c_str(), "enumvals", _sym_atom, 0, "Any Depth Color Infrared");
+		}
+
+		/*{
+		auto attr = out_str + "_rs_rate";
+		auto pretty = out_maj_str + "Rate";
+		add_output_attribute<t_jit_realsense>(attr, i, &jit_rs_streaminfo::rate);
+		CLASS_ATTR_LABEL(t_jit_realsense::max_class, attr.c_str(), 0, pretty.c_str());
+		CLASS_ATTR_FILTER_CLIP(t_jit_realsense::max_class, "rs_rate", 0, 120);
+		}
+
+		{
+		auto attr = out_str + "_rs_index";
+		auto pretty = out_maj_str + "Index";
+		add_output_attribute<t_jit_realsense>(attr, i, &jit_rs_streaminfo::stream_index);
+		CLASS_ATTR_LABEL(t_jit_realsense::max_class, attr.c_str(), 0, pretty.c_str());
+		CLASS_ATTR_FILTER_CLIP(t_jit_realsense::max_class, "rs_index", 0, 2);
+		}
+
+		{
+		auto attr = out_str + "_rs_dim";
+		auto pretty = out_maj_str + "Dims";
+		add_array_output_attribute<t_jit_realsense>(attr, i, &jit_rs_streaminfo::dimensions);
+		CLASS_ATTR_LABEL(t_jit_realsense::max_class, attr.c_str(), 0, pretty.c_str());
+		}*/
+	 }
+	
 	obj->out_count = outcount;
 	obj->rebuild();
 	return obj;
@@ -423,6 +463,11 @@ try
 }
 catch(const std::exception & e)
 {
+	if(typeid(e) == typeid(rs2::recoverable_error)) {
+		post("%s", e.what());
+		return JIT_ERR_NONE;
+	}
+	
 	error("%s\n", e.what());
 	x->cleanup();
 	return JIT_ERR_GENERIC;
@@ -430,6 +475,8 @@ catch(const std::exception & e)
 
 t_jit_err jit_realsense_init()
 {
+	common_symbols_init();
+	
 	t_jit_object	*mop;
 
 	t_jit_realsense::max_class = (t_class*)jit_class_new("jit_realsense", (method)jit_realsense_new, (method)jit_realsense_free, sizeof(t_jit_realsense), A_DEFLONG, 0);
@@ -461,46 +508,6 @@ t_jit_err jit_realsense_init()
 
 	add_array_output_attribute<t_jit_realsense>("rs_dim", 0, &jit_rs_streaminfo::dimensions);
 	CLASS_ATTR_LABEL(t_jit_realsense::max_class, "rs_dim", 0, "Out 1 Dims");
-
-	/*for(int i = 1; i < jit_realsense_num_outlets; i++)
-	{
-		const std::string num_str = std::to_string(i + 1);
-		const std::string out_str = "out" + num_str;
-		const std::string out_maj_str = "Out" + num_str + " ";
-
-		{
-			auto attr = out_str + "_rs_stream";
-			auto pretty = out_maj_str + "Stream";
-			add_output_attribute<t_jit_realsense>(attr, i, &jit_rs_streaminfo::stream);
-			CLASS_ATTR_LABEL(t_jit_realsense::max_class, attr.c_str(), 0, pretty.c_str());
-			class_attr_enumindex(t_jit_realsense::max_class, attr,
-													 "Any", "Depth", "Color", "Infrared");
-		}
-
-		{
-			auto attr = out_str + "_rs_rate";
-			auto pretty = out_maj_str + "Rate";
-			add_output_attribute<t_jit_realsense>(attr, i, &jit_rs_streaminfo::rate);
-			CLASS_ATTR_LABEL(t_jit_realsense::max_class, attr.c_str(), 0, pretty.c_str());
-			CLASS_ATTR_FILTER_CLIP(t_jit_realsense::max_class, "rs_rate", 0, 120);
-		}
-
-		{
-			auto attr = out_str + "_rs_index";
-			auto pretty = out_maj_str + "Index";
-			add_output_attribute<t_jit_realsense>(attr, i, &jit_rs_streaminfo::stream_index);
-			CLASS_ATTR_LABEL(t_jit_realsense::max_class, attr.c_str(), 0, pretty.c_str());
-			CLASS_ATTR_FILTER_CLIP(t_jit_realsense::max_class, "rs_index", 0, 2);
-		}
-
-		{
-			auto attr = out_str + "_rs_dim";
-			auto pretty = out_maj_str + "Dims";
-			add_array_output_attribute<t_jit_realsense>(attr, i, &jit_rs_streaminfo::dimensions);
-			CLASS_ATTR_LABEL(t_jit_realsense::max_class, attr.c_str(), 0, pretty.c_str());
-		}
-	}*/
-
 
 	// finalize class
 	jit_class_register(t_jit_realsense::max_class);

@@ -40,6 +40,40 @@ void max_jit_realsense_outputmatrix(t_max_jit_realsense *x)
 	}
 }
 
+// only for dynamic attrs
+void max_jit_realsense_anything(t_max_jit_realsense *x, t_symbol *message, long argc, t_atom *argv) {
+	void *o = max_jit_obex_jitob_get(x);
+	void *attr = nullptr;
+	
+	if(strncmp(message->s_name, "get", 3) == 0) {
+		t_symbol *name = gensym(message->s_name+3);
+		attr = jit_object_attr_get(o, name);
+		if(attr) {
+			long ac = 0;
+			t_atom *av = nullptr;
+			jit_object_method(attr, gensym("get"), o, &ac, &av);
+			if(ac && av) {
+				outlet_anything(max_jit_obex_dumpout_get(x), name, ac, av);
+			}
+			jit_freebytes(av, sizeof(t_atom)*ac);
+		}
+	}
+	else {
+		attr = jit_object_attr_get(o, message);
+		if(attr) {
+			if(object_attr_usercanset(o, message)) {
+				jit_object_method(attr, gensym("set"), o, argc, argv);
+			}
+			else {
+				object_error((t_object *)x,"attribute %s is not settable",message->s_name);
+			}
+		}
+		else {
+			object_error((t_object *)x,"invalid message %s",message->s_name);
+		}
+	}
+}
+
 void *max_jit_realsense_new(t_symbol *, long argc, t_atom *argv)
 {
 	auto x = max_jit_object_alloc((maxclass*)t_max_jit_realsense::max_class, gensym("jit_realsense"));
@@ -88,7 +122,7 @@ void ext_main(void *)
 {
 	jit_realsense_init();
 
-	auto max_class = class_new("jit.realsense", (method)max_jit_realsense_new, (method)max_jit_realsense_free, sizeof(t_max_jit_realsense), NULL, A_GIMME, 0);
+	auto max_class = class_new("jit.realsense", (method)max_jit_realsense_new, (method)max_jit_realsense_free, sizeof(t_max_jit_realsense), nullptr, A_GIMME, 0);
 	max_jit_class_obex_setup(max_class, calcoffset(t_max_jit_realsense, obex));
 
 	auto jit_class = (maxclass*)jit_class_findbyname(gensym("jit_realsense"));
@@ -96,6 +130,7 @@ void ext_main(void *)
 	max_jit_class_wrap_standard(max_class, jit_class, 0);
 
 	max_jit_class_addmethod_usurp_low(max_class, (method) max_jit_realsense_outputmatrix, (char*)"outputmatrix");
+	class_addmethod(max_class, (method)max_jit_realsense_anything, "anything", A_GIMME, 0);
 	class_addmethod(max_class, (method)max_jit_mop_assist, "assist", A_CANT, 0);
 	class_register(CLASS_BOX, max_class);
 	t_max_jit_realsense::max_class = max_class;

@@ -98,7 +98,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jit.realsense/ex
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 
-add_library(${PROJECT_NAME} MODULE jit.realsense.cpp max.jit.realsense.cpp)
+add_library(${PROJECT_NAME} MODULE jit.realsense.cpp max.jit.realsense.cpp  ${C74SUPPORT}/max-includes/common/commonsyms.c)
 target_link_libraries(${PROJECT_NAME} PRIVATE MaxAPI Jitter realsense2)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
