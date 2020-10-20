@@ -85,8 +85,13 @@ elseif(APPLE)
   find_path(FILE_H_DIR Files.h
             HINTS
             /System/Library/Frameworks/
-            /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers/)
-  
+            /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers/
+            /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers/
+            /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.12.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
+            /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
+            /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.10.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers
+            /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.9.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/Headers)
+
   # Rpath handling to be able to copy the built external in max folder
   set(CMAKE_INSTALL_NAME_DIR @rpath)
   set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
@@ -131,11 +136,11 @@ endif()
 set(EXTERN_OUTPUT_NAME "${PROJECT_NAME}")
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${EXTERN_OUTPUT_NAME}")
 ### Output ###
-if (APPLE)  
+if (APPLE)
   set_property(TARGET ${PROJECT_NAME}
          PROPERTY BUNDLE True)
   set_property(TARGET ${PROJECT_NAME}
-         PROPERTY BUNDLE_EXTENSION "mxo") 
+         PROPERTY BUNDLE_EXTENSION "mxo")
   set_target_properties(${PROJECT_NAME} PROPERTIES XCODE_ATTRIBUTE_WRAPPER_EXTENSION "mxo")
   set_target_properties(${PROJECT_NAME} PROPERTIES MACOSX_BUNDLE_BUNDLE_VERSION "${GIT_VERSION_TAG}")
   set_target_properties(${PROJECT_NAME} PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in)
@@ -155,11 +160,10 @@ endif ()
 ### Post Build ###
 
 if (APPLE)
-    add_custom_command( 
-      TARGET ${PROJECT_NAME} 
-      POST_BUILD 
-      COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/PkgInfo" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${EXTERN_OUTPUT_NAME}.mxo/Contents/PkgInfo" 
-      COMMENT "Copy PkgInfo" 
+    add_custom_command(
+      TARGET ${PROJECT_NAME}
+      POST_BUILD
+      COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/PkgInfo" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${EXTERN_OUTPUT_NAME}.mxo/Contents/PkgInfo"
+      COMMENT "Copy PkgInfo"
     )
 endif ()
-
