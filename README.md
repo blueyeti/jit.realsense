@@ -1,6 +1,10 @@
 # jit.realsense
 RealSense external for Max/MSP
 
+IMPORTANT NOTE : This repo is out to date.
+The lastest version of the jit.realsense external is here: 
+https://github.com/robtherich/jit.realsense
+
 ### Building for Windows
 
 #### Required tools: 
