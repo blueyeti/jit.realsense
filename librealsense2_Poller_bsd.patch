@@ -1,0 +1,13 @@
+--- /Users/serguei/jit.realsense-smokhov/librealsense/third-party/libtm/libtm/src/infra/Poller_bsd.cpp	2020-02-23 18:04:57.000000000 -0500
++++ /Users/serguei/Downloads/jit.realsense.w1/librealsense/third-party/libtm/libtm/src/infra/Poller_bsd.cpp	2020-02-12 23:53:13.000000000 -0500
+@@ -19,6 +19,10 @@
+ #include <unordered_map>
+ #include <array>
+ 
++#ifndef EVFILT_EXCEPT
++#define EVFILT_EXCEPT           (-15)   /* Exception events */
++#endif
++
+ namespace perc
+ {
+ 
