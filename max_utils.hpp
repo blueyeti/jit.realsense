@@ -17,18 +17,23 @@ intptr_t get_offset(T U::*member, int N)
 
 
 template <typename Type, typename T>
+static void add_attribute_flags(std::string name, T Type::*member, long flags)
+{
+	jit_class_addattr(Type::max_class,
+					  (t_jit_object*) jit_object_new(
+													 _jit_sym_jit_attr_offset,
+													 name.c_str(),
+													 _jit_sym_long,
+													 flags,
+													 (method)nullptr,
+													 (method)nullptr,
+													 get_offset(member)));
+}
+
+template <typename Type, typename T>
 static void add_attribute(std::string name, T Type::*member)
 {
-    const auto flags = JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_USURP_LOW;
-    jit_class_addattr(Type::max_class,
-                      (t_jit_object*) jit_object_new(
-                          _jit_sym_jit_attr_offset,
-                          name.c_str(),
-                          _jit_sym_long,
-                          flags,
-                          (method)nullptr,
-                          (method)nullptr,
-                          get_offset(member)));
+	add_attribute_flags(name, member, JIT_ATTR_GET_DEFER_LOW | JIT_ATTR_SET_USURP_LOW);
 }
 
 template <typename Type, typename T, typename Gadget>
@@ -65,6 +70,23 @@ static void add_array_output_attribute(std::string name, int num, T Gadget::*mem
                           (method)nullptr,
                           outputs_offset + get_offset(member) - sizeof(long),
                           outputs_offset + get_offset(member)));
+}
+
+template <typename Type, typename T, typename Gadget>
+static void add_dynamic_attribute(t_object *ob, std::string name, int num, int size, T Gadget::*member)
+{
+	const auto outputs_offset = get_offset(&Type::outputs, num);
+	t_object *attr = nullptr;
+	if(size == 1) {
+		attr = attr_offset_new(name.c_str(), _jit_sym_long, 0, (method)nullptr, (method)nullptr, outputs_offset + get_offset(member));
+	}
+	else {
+		attr = attr_offset_array_new(name.c_str(), _jit_sym_long, size, 0, (method)nullptr, (method)nullptr, outputs_offset + get_offset(member) - sizeof(long), outputs_offset + get_offset(member));
+	}
+	if(attr) {
+		jit_object_addattr(ob, attr);
+		object_attr_addattr_parse(ob, name.c_str(), "dynamicattr", gensym("long"), 0, "1");
+	}
 }
 
 void class_attr_enumindex_rec(t_atom*)
